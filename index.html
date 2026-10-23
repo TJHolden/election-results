@@ -219,10 +219,8 @@ function normalize(raw) {
     source: "civicapi"
   };
 }
-const isChamberRow = (r) => typeof r.seats == "number" && (r.candidates || []).length > 0 && (r.candidates || []).every((c) => c && "seats" in c);
-let PAGE_EFF = null;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function fetchJSON(url, attempts = 3) {
+const isChamberRow = (r) => typeof r.seats == "number" && (r.candidates || []).length > 0 && (r.candidates || []).every((c) => c && "seats" in c), sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function fetchJSON(url, attempts = 4) {
   let last;
   for (let i = 0; i < attempts; i++) {
     const ctl = new AbortController(), tm = setTimeout(() => ctl.abort(), 25e3);
@@ -236,30 +234,23 @@ async function fetchJSON(url, attempts = 3) {
       if (clearTimeout(tm), e.status && e.status < 500) throw e;
       last = e.name === "AbortError" ? new Error("timeout") : e.status ? e : Object.assign(new Error("CORS"), { cors: !0 });
     }
-    await sleep(600 * (i + 1));
+    await sleep(last && last.status === 503 ? 1500 * (i + 1) : 600 * (i + 1));
   }
   throw last;
 }
-async function fetchPages(query, onProgress, maxPages = MAX_PAGES, stopWhen = null) {
-  const out = [];
-  let offset = 0, total = null, page = 0;
-  const params = typeof query == "string" ? { query } : query;
-  for (; page < maxPages; ) {
-    const want = PAGE_EFF || 100, qs = Object.entries({ ...params, offset, limit: want }).filter(([, v]) => v !== void 0 && v !== "").map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
-    let d;
-    try {
-      d = await fetchJSON(`${CIVIC}/race/search?${qs}`);
-    } catch (e) {
-      if (!PAGE_EFF && want > PAGE && (e.status === 400 || e.status === 422)) {
-        PAGE_EFF = PAGE;
-        continue;
-      }
-      throw e;
-    }
-    const rs = d.races || [];
-    if (PAGE_EFF || (rs.length >= want ? PAGE_EFF = want : +d.limit && +d.limit < want && rs.length === +d.limit && (PAGE_EFF = Math.max(PAGE, +d.limit))), total === null && (total = +d.count > want ? +d.count : null), out.push(...rs), offset += rs.length, page++, onProgress && onProgress(out.length, total), rs.length < want || rs.length === 0 || total && out.length >= total || PAGE_EFF && rs.length < PAGE_EFF || stopWhen && stopWhen(rs)) break;
+const FIRST_LIMIT = 500, MAX_LIMIT = 1e4, SERVER_ROW_CAP = 4e3, limitHint = /* @__PURE__ */ new Map();
+async function fetchPages(query, onProgress, _maxPages = MAX_PAGES, stopWhen = null) {
+  const params = typeof query == "string" ? { query } : query, key = JSON.stringify(params);
+  let limit = Math.max(100, Math.min(MAX_LIMIT, limitHint.get(key) || FIRST_LIMIT));
+  for (; ; ) {
+    const qs = Object.entries({ ...params, offset: 0, limit }).filter(([, v]) => v !== void 0 && v !== "").map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&"), d = await fetchJSON(`${CIVIC}/race/search?${qs}`), seen = /* @__PURE__ */ new Set(), rs = (d.races || []).filter((r) => r && !seen.has(r.id) && seen.add(r.id));
+    onProgress && onProgress(rs.length, null);
+    const n = (d.races || []).length, short = n < limit;
+    if (!!stopWhen && (!rs.length || stopWhen(rs)) || short && n < SERVER_ROW_CAP)
+      return limitHint.set(key, Math.min(MAX_LIMIT, rs.length + 60)), rs;
+    if (short || limit >= MAX_LIMIT) return Object.assign(rs, { truncated: !0 });
+    limit = Math.min(MAX_LIMIT, limit * 4);
   }
-  return out;
 }
 const MONTHS = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12, jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
 function parseDateQuery(q) {
@@ -274,8 +265,18 @@ async function pmap(items, fn, concurrency) {
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, run));
 }
-const STATE_PAGE_CAP = 40, KEY_OFFICE_QUERIES = ["US Senate", "US House", "Governor", "Attorney General", "Secretary of State", "Treasurer", "Auditor", "Superintendent", "Commissioner", "Supreme Court", "Court of Appeals", "State Senate", "State House", "State Assembly", "House of Delegates", "Legislature", "Amendment", "Measure", "Proposition", "Question", "Referendum", "Initiative"];
-async function fetchAll(query, onProgress, onPartial) {
+const STATE_PAGE_CAP = 40, FULL_SWEEP_MS = 5 * 6e4, HOT_LEAD_MS = 20 * 6e4, STALL_MS = 10 * 6e4;
+function hotStatesOf(races, pc2, now) {
+  const byS = {};
+  return races.forEach((r) => {
+    r.level !== "Local" && (byS[r.abbr] = byS[r.abbr] || []).push(r);
+  }), Object.keys(STATE_NAMES).filter((ab) => {
+    const rs = byS[ab] || [], c = pc2[ab] ? new Date(pc2[ab]).getTime() : null, counting = rs.some((r) => r.v1 + r.v2 > 0 && !isDecided(r)), closing = c != null && now >= c - HOT_LEAD_MS && now <= c + 48 * 36e5, allDone = rs.length > 0 && rs.every(isDecided);
+    return (counting || closing) && !allDone;
+  });
+}
+const KEY_OFFICE_QUERIES = ["US Senate", "US House", "Governor", "Attorney General", "Secretary of State", "Treasurer", "Auditor", "Superintendent", "Commissioner", "Supreme Court", "Court of Appeals", "State Senate", "State House", "State Assembly", "House of Delegates", "Legislature", "Amendment", "Measure", "Proposition", "Question", "Referendum", "Initiative"];
+async function fetchAll(query, onProgress, onPartial, onlyStates = null) {
   const dq = parseDateQuery(query);
   if (!dq)
     return Object.assign((await fetchPages(query, onProgress)).filter((r) => !isChamberRow(r)).map(normalize), { failed: [], capped: [] });
@@ -288,7 +289,7 @@ async function fetchAll(query, onProgress, onPartial) {
   const flush = () => {
     flushT = null, onPartial && onPartial([...seen.values()].map(normalize));
   };
-  if (await pmap(Object.keys(STATE_NAMES), async (abbr) => {
+  if (await pmap(onlyStates || Object.keys(STATE_NAMES), async (abbr) => {
     const pastRange = (page) => {
       const last = page[page.length - 1];
       return !!last && !!last.election_date && new Date(last.election_date).getTime() < startMs;
@@ -297,7 +298,7 @@ async function fetchAll(query, onProgress, onPartial) {
     };
     try {
       const rs = await fetchPages({ province: abbr }, () => onProgress && onProgress(seen.size, null), STATE_PAGE_CAP, pastRange);
-      rs.forEach(keep), rs.length >= STATE_PAGE_CAP * (PAGE_EFF || PAGE) && !pastRange(rs) && (capped.push(abbr), await pmap(KEY_OFFICE_QUERIES, async (q) => {
+      rs.forEach(keep), rs.truncated && (capped.push(abbr), await pmap(KEY_OFFICE_QUERIES, async (q) => {
         try {
           (await fetchPages({ province: abbr, query: q }, null, 15, pastRange)).forEach((r) => {
             classify(r)[0] !== "Local" && keep(r);
@@ -308,7 +309,24 @@ async function fetchAll(query, onProgress, onPartial) {
     } catch (e) {
       failed.push(abbr), firstErr = firstErr || e;
     }
-  }, 6), flushT && (clearTimeout(flushT), flushT = null), !seen.size && firstErr) throw firstErr;
+  }, 4), failed.length && failed.length < 10) {
+    const retry = failed.splice(0);
+    for (const abbr of retry) {
+      await sleep(2500);
+      try {
+        const rs = await fetchPages({ province: abbr }, null, STATE_PAGE_CAP, (page) => {
+          const last = page[page.length - 1];
+          return !!last && !!last.election_date && new Date(last.election_date).getTime() < startMs;
+        });
+        rs.forEach((r) => {
+          r.country && r.country !== "US" || r.province && r.province !== abbr || isChamberRow(r) || inRange(r) && seen.set(r.id, r);
+        }), rs.truncated && capped.push(abbr);
+      } catch {
+        failed.push(abbr);
+      }
+    }
+  }
+  if (flushT && (clearTimeout(flushT), flushT = null), !seen.size && firstErr) throw firstErr;
   return Object.assign([...seen.values()].map(normalize), { failed, capped });
 }
 const LS_PREFIX = "en:", lsGet = (k, maxAgeMs) => {
@@ -1142,7 +1160,7 @@ function StatePopup({ abbr, races, hist, calledAt, onClose, initialRaceId, initi
       var _a2;
       return (_a2 = document.getElementById(`row-${r.id}`)) == null ? void 0 : _a2.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 50);
-  }, highlightId: open, view }) : featsErr ? /* @__PURE__ */ React.createElement("div", { style: { color: T.amber, fontSize: 12, textAlign: "center", padding: 30 } }, featsErr) : feats ? /* @__PURE__ */ React.createElement("div", { style: beside ? { gridColumn: 1, gridRow: 2, minWidth: 0 } : { width: "100%", display: "contents" } }, /* @__PURE__ */ React.createElement(GeoMap, { feats, results: detail, prior: prior && prior !== "loading" ? prior.detail : null, view, hover, setHover, ballot: (focusRace == null ? void 0 : focusRace.level) === "Ballot Measure" })) : /* @__PURE__ */ React.createElement("div", { style: { color: T.text3, fontSize: 12 } }, "Loading county map\u2026"), beside && /* @__PURE__ */ React.createElement("div", { style: { gridColumn: 2, gridRow: 2, minWidth: 0 } }, /* @__PURE__ */ React.createElement(DistrictGrid, { races: byType[beside], hover, setHover, onPick: (r) => setHover((h) => h === r.id ? null : r.id), highlightId: null, view: view === "swing" ? "swing" : "results" })), view !== "history" && (hoverRegion || hoverDistrict) && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", right: 28, top: 8, background: T.surface, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", minWidth: 220, pointerEvents: "none", boxShadow: "0 8px 24px #0f1a2e26", zIndex: 3 } }, hoverRegion && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 14, fontWeight: 700 } }, hoverRegion.name, hoverRegion.type ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: T.text3, fontWeight: 400 } }, " ", hoverRegion.type) : null), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3, marginBottom: 6 } }, hoverRegion.rpt, "% reporting \xB7 ", fmtNum(hoverRegion.total), " votes"), [[hoverRegion.c1, hoverRegion.a1, hoverRegion.v1, hoverRegion.p1], [hoverRegion.c2, hoverRegion.a2, hoverRegion.v2, hoverRegion.p2]].map(([n, p, v, pt]) => /* @__PURE__ */ React.createElement("div", { key: n, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "2px 0" } }, /* @__PURE__ */ React.createElement(Tag, { party: pt, size: 14 }), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, color: T.text2 } }, n), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO } }, p.toFixed(1), "%"), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, color: T.text3, width: 44, textAlign: "right" } }, fmtNum(v)))), view === "swing" && hoverPrior && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 6, paddingTop: 6, borderTop: `1px solid ${T.border}`, fontSize: 11, color: T.text2 } }, "Last time: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, color: pc(hoverPrior.margin >= 0 ? "D" : "R", !0) } }, hoverPrior.margin >= 0 ? "D" : "R", "+", Math.abs(hoverPrior.margin).toFixed(1)), " \xB7 Shift: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, fontWeight: 700, color: hoverRegion.margin - hoverPrior.margin >= 0 ? T.demB : T.repB } }, hoverRegion.margin - hoverPrior.margin >= 0 ? "D" : "R", "+", Math.abs(hoverRegion.margin - hoverPrior.margin).toFixed(1)))), hoverDistrict && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 14, fontWeight: 700 } }, hoverDistrict.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3, marginBottom: 6 } }, isDecided(hoverDistrict) ? "Decided" : `${hoverDistrict.rpt}% reporting`), [[hoverDistrict.c1, hoverDistrict.a1, hoverDistrict.p1], [hoverDistrict.c2, hoverDistrict.a2, hoverDistrict.p2]].map(([n, p, pt]) => /* @__PURE__ */ React.createElement("div", { key: n, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "2px 0" } }, /* @__PURE__ */ React.createElement(Tag, { party: pt, size: 14 }), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, color: T.text2 } }, n), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO } }, p.toFixed(1), "%"))), hoverDistrict.prior && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 6, paddingTop: 6, borderTop: `1px solid ${T.border}`, fontSize: 11, color: T.text2 } }, "Last time: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, color: pc(leaderOf(hoverDistrict.prior), !0) } }, leaderOf(hoverDistrict.prior), "+", Math.abs(marginOf(hoverDistrict.prior)).toFixed(1)), " \xB7 Shift: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, fontWeight: 700, color: hoverDistrict.shift >= 0 ? T.demB : T.repB } }, hoverDistrict.shift >= 0 ? "D" : "R", "+", Math.abs(hoverDistrict.shift).toFixed(1)))))), /* @__PURE__ */ React.createElement("div", { style: { padding: "10px 20px 14px", borderTop: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 14, fontSize: 11, color: T.text3, flexWrap: "wrap" } }, view === "history" ? /* @__PURE__ */ React.createElement("span", null, "Past generals from civicAPI \xB7 turnout for tonight is projected from % reporting until 100%") : view === "swing" && !isDistrictType(mapType) ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 60, height: 8, borderRadius: 4, background: `linear-gradient(90deg,${T.rep},${T.border2},${T.dem})` } }), "shift toward R \u2190 \u2192 shift toward D"), prior === "loading" ? /* @__PURE__ */ React.createElement("span", null, "Finding last result\u2026") : prior === null ? /* @__PURE__ */ React.createElement("span", { style: { color: T.amber } }, 'No prior result found for this office \u2014 try "Results" view.') : (prior == null ? void 0 : prior.race) && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto" } }, "vs. ", /* @__PURE__ */ React.createElement("b", { style: { color: T.text } }, prior.race.name, " ", prior.race.electionDate ? new Date(prior.race.electionDate).getFullYear() : ""), " (", priorMargin >= 0 ? "D" : "R", "+", Math.abs(priorMargin).toFixed(1), ") \xB7 now ", stateMargin >= 0 ? "D" : "R", "+", Math.abs(stateMargin).toFixed(1), " \xB7 statewide shift ", /* @__PURE__ */ React.createElement("b", { style: { color: stateMargin - priorMargin >= 0 ? T.demB : T.repB } }, stateMargin - priorMargin >= 0 ? "D" : "R", "+", Math.abs(stateMargin - priorMargin).toFixed(1)))) : isDistrictType(mapType) && view === "swing" ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 60, height: 8, borderRadius: 4, background: `linear-gradient(90deg,${T.rep},${T.bg},${T.dem})` } }), "more R than last time \u2190 \u2192 more D"), (() => {
+  }, highlightId: open, view }) : featsErr ? /* @__PURE__ */ React.createElement("div", { style: { color: T.amber, fontSize: 12, textAlign: "center", padding: 30 } }, featsErr) : feats ? /* @__PURE__ */ React.createElement("div", { style: beside ? { gridColumn: 1, gridRow: 2, minWidth: 0 } : { width: "100%", display: "contents" } }, /* @__PURE__ */ React.createElement(GeoMap, { feats, results: detail, prior: prior && prior !== "loading" ? prior.detail : null, view, hover, setHover, ballot: (focusRace == null ? void 0 : focusRace.level) === "Ballot Measure" })) : /* @__PURE__ */ React.createElement("div", { style: { color: T.text3, fontSize: 12 } }, "Loading county map\u2026"), beside && /* @__PURE__ */ React.createElement("div", { style: { gridColumn: 2, gridRow: 2, minWidth: 0 } }, /* @__PURE__ */ React.createElement(DistrictGrid, { races: byType[beside], hover, setHover, onPick: (r) => setHover((h) => h === r.id ? null : r.id), highlightId: null, view: view === "swing" ? "swing" : "results" })), view !== "history" && (hoverRegion || hoverDistrict) && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", right: 28, top: 8, background: T.surface, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", minWidth: 220, pointerEvents: "none", boxShadow: "0 8px 24px #0f1a2e26", zIndex: 3 } }, hoverRegion && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 14, fontWeight: 700 } }, hoverRegion.name, hoverRegion.type ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: T.text3, fontWeight: 400 } }, " ", hoverRegion.type) : null), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3, marginBottom: 6 } }, hoverRegion.rpt, "% reporting \xB7 ", fmtNum(hoverRegion.total), " votes"), [[hoverRegion.c1, hoverRegion.a1, hoverRegion.v1, hoverRegion.p1], [hoverRegion.c2, hoverRegion.a2, hoverRegion.v2, hoverRegion.p2]].map(([n, p, v, pt]) => /* @__PURE__ */ React.createElement("div", { key: n, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "2px 0" } }, /* @__PURE__ */ React.createElement(Tag, { party: pt, size: 14 }), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, color: T.text2 } }, n), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO } }, p.toFixed(1), "%"), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, color: T.text3, width: 44, textAlign: "right" } }, fmtNum(v)))), view === "swing" && hoverPrior && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 6, paddingTop: 6, borderTop: `1px solid ${T.border}`, fontSize: 11, color: T.text2 } }, "Last time: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, color: pc(hoverPrior.margin >= 0 ? "D" : "R", !0) } }, hoverPrior.margin >= 0 ? "D" : "R", "+", Math.abs(hoverPrior.margin).toFixed(1)), " \xB7 Shift: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, fontWeight: 700, color: hoverRegion.margin - hoverPrior.margin >= 0 ? T.demB : T.repB } }, hoverRegion.margin - hoverPrior.margin >= 0 ? "D" : "R", "+", Math.abs(hoverRegion.margin - hoverPrior.margin).toFixed(1)))), hoverDistrict && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 14, fontWeight: 700 } }, hoverDistrict.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3, marginBottom: 6 } }, isDecided(hoverDistrict) ? "Decided" : `${hoverDistrict.rpt}% reporting`), [[hoverDistrict.c1, hoverDistrict.a1, hoverDistrict.p1], [hoverDistrict.c2, hoverDistrict.a2, hoverDistrict.p2]].map(([n, p, pt]) => /* @__PURE__ */ React.createElement("div", { key: n, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "2px 0" } }, /* @__PURE__ */ React.createElement(Tag, { party: pt, size: 14 }), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, color: T.text2 } }, n), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO } }, p.toFixed(1), "%"))), hoverDistrict.prior && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 6, paddingTop: 6, borderTop: `1px solid ${T.border}`, fontSize: 11, color: T.text2 } }, "Last time: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, color: pc(leaderOf(hoverDistrict.prior), !0) } }, leaderOf(hoverDistrict.prior), "+", Math.abs(marginOf(hoverDistrict.prior)).toFixed(1)), " \xB7 Shift: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, fontWeight: 700, color: hoverDistrict.shift >= 0 ? T.demB : T.repB } }, hoverDistrict.shift >= 0 ? "D" : "R", "+", Math.abs(hoverDistrict.shift).toFixed(1)))))), /* @__PURE__ */ React.createElement("div", { style: { padding: "10px 20px 14px", borderTop: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 14, fontSize: 11, color: T.text3, flexWrap: "wrap" } }, view === "history" ? /* @__PURE__ */ React.createElement("span", null, "Past generals from civicAPI \xB7 turnout for tonight is projected from % reporting until 100%") : view === "swing" && !isDistrictType(mapType) ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 60, height: 8, borderRadius: 4, background: `linear-gradient(90deg,${T.rep},${T.border2},${T.dem})` } }), "shift toward R \u2190 \u2192 shift toward D"), prior === "loading" ? /* @__PURE__ */ React.createElement("span", null, "Finding last result\u2026") : prior === null ? /* @__PURE__ */ React.createElement("span", { style: { color: T.amber } }, 'No prior result found for this office \u2014 try "Results" view.') : (prior == null ? void 0 : prior.race) && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto" } }, "vs. ", /* @__PURE__ */ React.createElement("b", { style: { color: T.text } }, prior.race.name, " ", prior.race.electionDate ? new Date(prior.race.electionDate).getFullYear() : ""), " (", priorMargin >= 0 ? "D" : "R", "+", Math.abs(priorMargin).toFixed(1), ")", focusRace && focusRace.v1 + focusRace.v2 > 0 ? /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 now ", stateMargin >= 0 ? "D" : "R", "+", Math.abs(stateMargin).toFixed(1), " \xB7 statewide shift ", /* @__PURE__ */ React.createElement("b", { style: { color: stateMargin - priorMargin >= 0 ? T.demB : T.repB } }, stateMargin - priorMargin >= 0 ? "D" : "R", "+", Math.abs(stateMargin - priorMargin).toFixed(1))) : /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 shift shows once votes are counted"))) : isDistrictType(mapType) && view === "swing" ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 60, height: 8, borderRadius: 4, background: `linear-gradient(90deg,${T.rep},${T.bg},${T.dem})` } }), "more R than last time \u2190 \u2192 more D"), (() => {
     const wr = typeRaces.filter((r) => r.shift != null && r.a1 + r.a2 > 0);
     if (!wr.length) return /* @__PURE__ */ React.createElement("span", { style: { color: T.amber } }, "No prior results matched yet for these seats.");
     const W = wr.reduce((s, r) => s + r.v1 + r.v2, 0) || 1, sh = wr.reduce((s, r) => s + r.shift * (r.v1 + r.v2), 0) / W, fl = wr.filter((r) => isDecided(r) && r.prior && leaderOf(r) !== leaderOf(r.prior));
@@ -1539,7 +1557,7 @@ function ElectionCommandCenterInner() {
     const iv = setInterval(() => setNowTick(Date.now()), 3e4);
     return () => clearInterval(iv);
   }, []);
-  const [usFeats, setUsFeats] = useState(null), [mapStyle, setMapStyle] = useState("geo"), [mapFull, setMapFull] = useState(!1), [priors, setPriors] = useState({}), [priorProg, setPriorProg] = useState(null), [mapView, setMapView] = useState("results"), [cmpYear, setCmpYear] = useState("last"), [pres24, setPres24] = useState(null), [pres24Err, setPres24Err] = useState(!1);
+  const hotNow = useMemo(() => hotStatesOf(races, pollsClose, nowTick), [races, pollsClose, nowTick]), [usFeats, setUsFeats] = useState(null), [mapStyle, setMapStyle] = useState("geo"), [mapFull, setMapFull] = useState(!1), [priors, setPriors] = useState({}), [priorProg, setPriorProg] = useState(null), [mapView, setMapView] = useState("results"), [cmpYear, setCmpYear] = useState("last"), [pres24, setPres24] = useState(null), [pres24Err, setPres24Err] = useState(!1);
   useEffect(() => {
     if (cmpYear !== "pres24" || pres24) return;
     let on = !0;
@@ -1608,7 +1626,7 @@ function ElectionCommandCenterInner() {
   useEffect(() => {
     racesRef.current = races;
   }, [races]);
-  const raceSigRef = useRef(null), loadingRef = useRef(!1), priorsBusy = useRef(!1), priorTries = useRef({}), lastQ = useRef(null), loadedQ = useRef(null), load = useCallback(async (q, { silent = !1 } = {}) => {
+  const raceSigRef = useRef(null), loadingRef = useRef(!1), priorsBusy = useRef(!1), priorTries = useRef({}), lastQ = useRef(null), loadedQ = useRef(null), lastFullRef = useRef(0), cappedRef = useRef([]), numSigRef = useRef(null), [lastChange, setLastChange] = useState(null), stalled = !!lastChange && hotNow.length > 0 && nowTick - lastChange > STALL_MS, load = useCallback(async (q, { silent = !1 } = {}) => {
     const sq = (silent && loadedQ.current != null ? loadedQ.current : q != null ? q : query).trim(), fresh = lastQ.current !== null && lastQ.current !== sq.toLowerCase();
     if (!sq) {
       setRaces([]), setApi("idle"), setApiMsg("Enter a month and year (e.g. November 2026) or a race name, then Load.");
@@ -1632,12 +1650,31 @@ function ElectionCommandCenterInner() {
     }
     !silent && !wasLive ? (setApi("loading"), setApiMsg(""), setProg({ loaded: 0, total: null }), setRaces([])) : (setRefreshing(!0), silent || setProg({ loaded: 0, total: null }));
     const progressive = !silent && !wasLive;
+    let onlyStates = null;
+    if (silent && wasLive && parseDateQuery(sq) && racesRef.current.length && Date.now() - lastFullRef.current < FULL_SWEEP_MS && (onlyStates = hotStatesOf(racesRef.current, pollsCloseRef.current, Date.now()), !onlyStates.length)) {
+      loadingRef.current = !1, setRefreshing(!1);
+      return;
+    }
     try {
       let data = await fetchAll(sq, (l, t) => {
         (!silent || !wasLive) && setProg({ loaded: l, total: t });
       }, progressive ? (partial) => {
         partial.length && setRaces(partial);
-      } : null);
+      } : null, onlyStates);
+      if (onlyStates) {
+        const set = new Set(onlyStates), keepOld = racesRef.current.filter((r) => !set.has(r.abbr)), prevCap = cappedRef.current.filter((a) => !set.has(a));
+        data = Object.assign([...data, ...keepOld], { failed: data.failed || [], capped: [.../* @__PURE__ */ new Set([...prevCap, ...data.capped || []])] });
+      } else parseDateQuery(sq) && (lastFullRef.current = Date.now());
+      cappedRef.current = data.capped || [];
+      {
+        fresh && (numSigRef.current = null);
+        let sig = 0;
+        for (const r of data) sig = (sig * 31 + r.v1 + r.v2 + r.rpt + (r.called ? 7 : 0)) % 1e12;
+        if (sig !== numSigRef.current) {
+          const first = numSigRef.current === null;
+          numSigRef.current = sig, setLastChange(first ? null : Date.now());
+        }
+      }
       const failed = data.failed || [];
       if (failed.length && wasLive) {
         const keep = racesRef.current.filter((r) => failed.includes(r.abbr) && !data.some((d) => d.id === r.id));
@@ -1656,13 +1693,13 @@ function ElectionCommandCenterInner() {
             (window.requestIdleCallback || setTimeout)(save, { timeout: 3e3 });
           }
         }
-        const need = data.filter((r) => r.level !== "Local" && r.level !== "Ballot Measure" && r.level !== "Other" && (priorsRef.current[r.id] === void 0 || priorsRef.current[r.id] === null && (priorTries.current[r.id] || 0) < 3));
+        const rankP = (r) => r.level === "Federal" ? 0 : r.level === "Statewide" ? 1 : 2, need = data.filter((r) => r.level !== "Local" && r.level !== "Ballot Measure" && r.level !== "Other" && (priorsRef.current[r.id] === void 0 || priorsRef.current[r.id] === null && (priorTries.current[r.id] || 0) < 3)).sort((a, b) => rankP(a) - rankP(b)), priorConc = hotStatesOf(data, pollsCloseRef.current, Date.now()).length ? 2 : 6;
         if (need.length && !priorsBusy.current) {
           priorsBusy.current = !0;
           let done = 0;
           setPriorProg({ done: 0, total: need.length }), loadPriors(need, (id, p) => {
             p === null && (priorTries.current[id] = (priorTries.current[id] || 0) + 1), setPriors((prev) => ({ ...prev, [id]: p })), done++, setPriorProg(done >= need.length ? null : { done, total: need.length });
-          }).finally(() => {
+          }, priorConc).finally(() => {
             priorsBusy.current = !1;
           });
         }
@@ -1941,7 +1978,7 @@ function ElectionCommandCenterInner() {
       input::placeholder{color:${T.text4}}header input::placeholder{color:${T.navMuted}}button:focus-visible,input:focus-visible{outline:2px solid ${T.accent}80;outline-offset:1px}
       @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}`), showCountdown && /* @__PURE__ */ React.createElement(Countdown, { onClose: () => setShowCountdown(!1) }), /* @__PURE__ */ React.createElement("header", { className: "en-hdr en-pad", style: { padding: "14px 24px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", background: T.nav, color: T.navText, borderBottom: `4px solid ${T.gold}` } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 14 } }, /* @__PURE__ */ React.createElement(Logo, { size: 42 }), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SANS, fontSize: 10, fontWeight: 700, letterSpacing: 2.5, color: T.gold, textTransform: "uppercase", marginBottom: 2 } }, query || "Live results"), /* @__PURE__ */ React.createElement("h1", { onClick: titleClick, title: "", style: { fontFamily: SERIF, fontSize: 24, fontWeight: 900, letterSpacing: -0.4, color: T.navText, lineHeight: 1, userSelect: "none", cursor: "default" } }, "Election Night Live Results"))), /* @__PURE__ */ React.createElement("div", { className: "en-hdr-right", style: { display: "flex", alignItems: "center", gap: 12 } }, /* @__PURE__ */ React.createElement("form", { onSubmit: (e) => {
     e.preventDefault(), load(query);
-  }, className: "en-hdr-form", style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("input", { value: query, onChange: (e) => setQuery(e.target.value), placeholder: "Month + year, or a race name\u2026", className: "en-hdr-input", style: { ...inputSt, width: 200, fontFamily: MONO, fontSize: 11, background: T.navField, border: `1px solid ${T.navBorder}`, color: T.navText } }), /* @__PURE__ */ React.createElement("button", { type: "submit", disabled: api === "loading" || refreshing, style: { fontFamily: SANS, fontSize: 12, fontWeight: 600, padding: "7px 14px", borderRadius: 6, border: "none", background: T.gold, color: T.nav, cursor: "pointer", opacity: api === "loading" || refreshing ? 0.6 : 1 } }, api === "loading" ? "Loading\u2026" : refreshing ? "Refreshing\u2026" : "Load")), /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 20, border: `1px solid ${tone}40`, background: tone + "14" } }, /* @__PURE__ */ React.createElement(Dot, { color: tone, pulse: api === "live" || api === "loading", size: 6 }), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 11, fontWeight: 600, color: tone } }, api === "live" ? "Live" : api === "stale" ? "Stale" : api === "loading" ? "Loading" : api === "cors" ? "Blocked" : api === "error" ? "Error" : api === "empty" ? "No races" : "Ready")), /* @__PURE__ */ React.createElement("span", { className: "en-hide-narrow", style: { fontFamily: MONO, fontSize: 12, color: T.navMuted } }, clock), refreshing && /* @__PURE__ */ React.createElement("span", { title: "Refreshing", style: { display: "inline-flex" } }, /* @__PURE__ */ React.createElement(Dot, { color: T.gold, pulse: !0, size: 6 })))), (apiMsg || prog) && /* @__PURE__ */ React.createElement("div", { className: "en-status", style: { padding: "7px 24px", display: "flex", alignItems: "center", gap: 14, background: toneBar + "14", borderBottom: `1px solid ${T.border}` } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: toneBar, flex: 1 } }, prog ? `Fetching\u2026 ${prog.loaded.toLocaleString()}${prog.total ? ` of ${prog.total.toLocaleString()}` : " races found so far"}${prog.total ? " races" : ""}` : apiMsg, (api === "live" || api === "stale") && refreshedAt && /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, " \xB7 ", api === "stale" ? "last good data" : "refreshed", " ", fmtTime(refreshedAt))), prog && prog.total > 0 && /* @__PURE__ */ React.createElement("div", { style: { width: 180, height: 4, background: T.border, borderRadius: 2, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { height: "100%", width: `${Math.min(100, prog.loaded / prog.total * 100)}%`, background: T.accent, transition: "width .3s" } })), /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: T.text2, display: "flex", alignItems: "center", gap: 6 } }, "Refresh", /* @__PURE__ */ React.createElement("select", { value: refreshSec, onChange: (e) => setRefreshSec(+e.target.value), style: { fontFamily: SANS, fontSize: 11, padding: "3px 6px", borderRadius: 4, border: `1px solid ${T.border2}`, background: T.surface, color: T.text } }, /* @__PURE__ */ React.createElement("option", { value: 30 }, "30s"), /* @__PURE__ */ React.createElement("option", { value: 60 }, "60s"), /* @__PURE__ */ React.createElement("option", { value: 90 }, "90s"), /* @__PURE__ */ React.createElement("option", { value: 180 }, "3 min"), /* @__PURE__ */ React.createElement("option", { value: 300 }, "5 min"))), /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: T.text2, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: hideLocal, onChange: (e) => setHideLocal(e.target.checked) }), "Hide local races"), /* @__PURE__ */ React.createElement("label", { title: "Play a chime when a watchlist race is called", style: { fontSize: 11, color: T.text2, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: chime, onChange: (e) => {
+  }, className: "en-hdr-form", style: { display: "flex", gap: 6 } }, /* @__PURE__ */ React.createElement("input", { value: query, onChange: (e) => setQuery(e.target.value), placeholder: "Month + year, or a race name\u2026", className: "en-hdr-input", style: { ...inputSt, width: 200, fontFamily: MONO, fontSize: 11, background: T.navField, border: `1px solid ${T.navBorder}`, color: T.navText } }), /* @__PURE__ */ React.createElement("button", { type: "submit", disabled: api === "loading" || refreshing, style: { fontFamily: SANS, fontSize: 12, fontWeight: 600, padding: "7px 14px", borderRadius: 6, border: "none", background: T.gold, color: T.nav, cursor: "pointer", opacity: api === "loading" || refreshing ? 0.6 : 1 } }, api === "loading" ? "Loading\u2026" : refreshing ? "Refreshing\u2026" : "Load")), /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 20, border: `1px solid ${tone}40`, background: tone + "14" } }, /* @__PURE__ */ React.createElement(Dot, { color: tone, pulse: api === "live" || api === "loading", size: 6 }), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 11, fontWeight: 600, color: tone } }, api === "live" ? "Live" : api === "stale" ? "Stale" : api === "loading" ? "Loading" : api === "cors" ? "Blocked" : api === "error" ? "Error" : api === "empty" ? "No races" : "Ready")), /* @__PURE__ */ React.createElement("span", { className: "en-hide-narrow", style: { fontFamily: MONO, fontSize: 12, color: T.navMuted } }, clock), refreshing && /* @__PURE__ */ React.createElement("span", { title: "Refreshing", style: { display: "inline-flex" } }, /* @__PURE__ */ React.createElement(Dot, { color: T.gold, pulse: !0, size: 6 })))), (apiMsg || prog) && /* @__PURE__ */ React.createElement("div", { className: "en-status", style: { padding: "7px 24px", display: "flex", alignItems: "center", gap: 14, background: toneBar + "14", borderBottom: `1px solid ${T.border}` } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 12, color: toneBar, flex: 1 } }, prog ? `Fetching\u2026 ${prog.loaded.toLocaleString()}${prog.total ? ` of ${prog.total.toLocaleString()}` : " races found so far"}${prog.total ? " races" : ""}` : apiMsg, (api === "live" || api === "stale") && refreshedAt && /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, " \xB7 ", api === "stale" ? "last good data" : "refreshed", " ", fmtTime(refreshedAt)), (api === "live" || api === "stale") && parseDateQuery(loadedQ.current || "") && /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, hotNow.length ? ` \xB7 counting states (${hotNow.length <= 6 ? hotNow.join(", ") : hotNow.length}) every ${refreshSec < 60 ? refreshSec + "s" : refreshSec / 60 + " min"}, all states every 5 min` : " \xB7 all states every 5 min until votes are being counted"), lastChange && /* @__PURE__ */ React.createElement("span", { style: { color: stalled ? T.amber : T.text3, fontWeight: stalled ? 600 : 400 } }, stalled ? ` \xB7 no new numbers in ${Math.round((nowTick - lastChange) / 6e4)} min \u2014 civicAPI may be slow` : ` \xB7 numbers last changed ${fmtTime(new Date(lastChange))}`)), prog && prog.total > 0 && /* @__PURE__ */ React.createElement("div", { style: { width: 180, height: 4, background: T.border, borderRadius: 2, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { height: "100%", width: `${Math.min(100, prog.loaded / prog.total * 100)}%`, background: T.accent, transition: "width .3s" } })), /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: T.text2, display: "flex", alignItems: "center", gap: 6 } }, "Refresh", /* @__PURE__ */ React.createElement("select", { value: refreshSec, onChange: (e) => setRefreshSec(+e.target.value), style: { fontFamily: SANS, fontSize: 11, padding: "3px 6px", borderRadius: 4, border: `1px solid ${T.border2}`, background: T.surface, color: T.text } }, /* @__PURE__ */ React.createElement("option", { value: 30 }, "30s"), /* @__PURE__ */ React.createElement("option", { value: 60 }, "60s"), /* @__PURE__ */ React.createElement("option", { value: 90 }, "90s"), /* @__PURE__ */ React.createElement("option", { value: 180 }, "3 min"), /* @__PURE__ */ React.createElement("option", { value: 300 }, "5 min"))), /* @__PURE__ */ React.createElement("label", { style: { fontSize: 11, color: T.text2, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: hideLocal, onChange: (e) => setHideLocal(e.target.checked) }), "Hide local races"), /* @__PURE__ */ React.createElement("label", { title: "Play a chime when a watchlist race is called", style: { fontSize: 11, color: T.text2, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" } }, /* @__PURE__ */ React.createElement("input", { type: "checkbox", checked: chime, onChange: (e) => {
     setChime(e.target.checked), e.target.checked && chimeNow();
   } }), "Chime on watchlist calls"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: T.text3 } }, "Data: ", /* @__PURE__ */ React.createElement("a", { href: "https://civicapi.org", target: "_blank", rel: "noreferrer", style: { color: T.goldText, textDecoration: "none", fontWeight: 600 } }, "civicAPI"), (cmpYear === "pres24" || pres24) && /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 2024 pres. baseline: ", /* @__PURE__ */ React.createElement("a", { href: "https://github.com/tonmcg/US_County_Level_Election_Results_08-24", target: "_blank", rel: "noreferrer", style: { color: T.goldText, textDecoration: "none", fontWeight: 600 } }, "county results (tonmcg)")), pres24Err && /* @__PURE__ */ React.createElement("span", { style: { color: T.amber } }, " \xB7 2024 baseline didn't load \u2014 try again"))), /* @__PURE__ */ React.createElement(Ticker, { items: tickerItems }), /* @__PURE__ */ React.createElement(PollsStrip, { closes: pollsClose, now: nowTick }), /* @__PURE__ */ React.createElement("div", { className: "en-tabs", style: { display: "flex", alignItems: "center", borderBottom: `1px solid ${T.border}`, padding: "0 24px" } }, [["results", "Results"], ["early", "Early vote"], ...showPoll ? [["accuracy", "Poll results"]] : []].map(([k, l]) => /* @__PURE__ */ React.createElement("button", { key: k, onClick: () => {
     setTab(k), setOpen(null);
