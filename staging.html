@@ -309,7 +309,24 @@ async function fetchAll(query, onProgress, onPartial, onlyStates = null) {
     } catch (e) {
       failed.push(abbr), firstErr = firstErr || e;
     }
-  }, 4), flushT && (clearTimeout(flushT), flushT = null), !seen.size && firstErr) throw firstErr;
+  }, 4), failed.length && failed.length < 10) {
+    const retry = failed.splice(0);
+    for (const abbr of retry) {
+      await sleep(2500);
+      try {
+        const rs = await fetchPages({ province: abbr }, null, STATE_PAGE_CAP, (page) => {
+          const last = page[page.length - 1];
+          return !!last && !!last.election_date && new Date(last.election_date).getTime() < startMs;
+        });
+        rs.forEach((r) => {
+          r.country && r.country !== "US" || r.province && r.province !== abbr || isChamberRow(r) || inRange(r) && seen.set(r.id, r);
+        }), rs.truncated && capped.push(abbr);
+      } catch {
+        failed.push(abbr);
+      }
+    }
+  }
+  if (flushT && (clearTimeout(flushT), flushT = null), !seen.size && firstErr) throw firstErr;
   return Object.assign([...seen.values()].map(normalize), { failed, capped });
 }
 const LS_PREFIX = "en:", lsGet = (k, maxAgeMs) => {
