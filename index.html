@@ -1368,8 +1368,8 @@ function EvRows({ g, compact }) {
 }
 const EV_HISTORY = {
   2024: {
-    PA: { total: 1962141, D: 1078804, R: 642397, O: 240940, note: "mail ballots returned through Election Day", src: "https://data.pa.gov/resource/3q5t-ddp8.json" },
-    FL: { total: 8385529, D: 2769756, R: 3597463, O: 2018310, note: "early in-person + mail received through Election Day (official final is ~5,600 higher after late overseas mail)", src: "https://files.floridados.gov/media/708648/2024gen_vbm-ev_statuscounts.pdf" },
+    PA: { total: 1960300, D: 1078676, R: 640721, O: 240903, note: "mail ballots recorded \u2014 final state file (Vote Recorded status)", src: "https://data.pa.gov/resource/3q5t-ddp8.json" },
+    FL: { total: 8392165, D: 2772470, R: 3599175, O: 2020520, note: "early in-person + vote-by-mail \u2014 final state report (Dec 2, 2024; mail through Nov 20 incl. late overseas)", src: "https://files.floridados.gov/media/708648/2024gen_vbm-ev_statuscounts.pdf" },
     NC: { total: 4481455, D: 1451613, R: 1488775, O: 1541067, note: "one-stop + mail through Nov 4", src: "https://s3.amazonaws.com/dl.ncsbe.gov/Press/2024%20General/NC%20Absentee%20Stats%20for%202024%20General/2024-11-05%20Daily%20Absentee%20Stats%20Report%20-%202024%20General.pdf" },
     CO: { total: 3192982, D: 876774, R: 820325, O: 1495883, note: "all-mail state; all ballots returned through close of polls (\u2248 full turnout)", src: "https://coloradosos.gov/pubs/newsRoom/pressReleases/2024/2024GeneralElectionReturnReportingElectionDay1159PM.pdf" },
     IA: { total: 680297, D: 257634, R: 268899, O: 153764, note: "absentee received, SOS report Nov 6", src: "https://sos.iowa.gov/elections/pdf/2024/general/AbsenteeCongressional2024.pdf" },
@@ -1380,7 +1380,7 @@ const EV_HISTORY = {
     US: { total: 88380679, note: "NBC/TargetSmart final mail + early in-person", src: "https://www.nbcnews.com/politics/2024-elections/early-vote" }
   },
   2022: {
-    PA: { total: 1241709, D: 856132, R: 262652, O: 122925, note: "mail ballots returned through Election Day", src: "https://data.pa.gov/resource/uhfm-zhus.json" },
+    PA: { total: 1243610, D: 857378, R: 263059, O: 123173, note: "mail ballots returned \u2014 final state file", src: "https://data.pa.gov/resource/uhfm-zhus.json" },
     FL: { total: 5059413, D: 1870486, R: 2168758, O: 1020169, note: "early in-person + mail returned", src: "https://files.floridados.gov/media/706191/2022-ge-rptstatuscountsarchive-ev-vbm.pdf" },
     NC: { total: 2167503, D: 827874, R: 676885, O: 662744, note: "one-stop + mail through Nov 8 AM", src: "https://s3.amazonaws.com/dl.ncsbe.gov/Press/2022%20General/NC%20Absentee%20Stats%20for%202022%20General/2022-11-08%20Daily%20Absentee%20Stats%20Report%20-%202022%20General.pdf" },
     CO: { total: 2039527, D: 628522, R: 588081, O: 822924, note: "all-mail state; ballots returned as of 3:30 PM Election Day (\u2248 most of turnout)", src: "https://www.sos.state.co.us/pubs/newsRoom/pressReleases/2022/20221108GeneralElectionReturnReportingElectionDay330PM.pdf" },
