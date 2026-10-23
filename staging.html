@@ -313,8 +313,8 @@ async function fetchAll(query, onProgress, onPartial, onlyStates = null) {
   let firstErr = null, flushT = null;
   const flush = () => {
     flushT = null, onPartial && onPartial([...seen.values()].map(normalize));
-  };
-  if (await pmap(onlyStates || Object.keys(STATE_NAMES), async (abbr) => {
+  }, order = [...onlyStates || Object.keys(STATE_NAMES)].sort((a, b) => (STATE_ROWS_HINT[b] || 0) - (STATE_ROWS_HINT[a] || 0));
+  if (await pmap(order, async (abbr) => {
     const pastRange = (page) => {
       const last = page[page.length - 1];
       return !!last && !!last.election_date && new Date(last.election_date).getTime() < startMs;
@@ -334,7 +334,7 @@ async function fetchAll(query, onProgress, onPartial, onlyStates = null) {
     } catch (e) {
       failed.push(abbr), firstErr = firstErr || e;
     }
-  }, 4), failed.length && failed.length < 10) {
+  }, 5), failed.length && failed.length < 10) {
     const retry = failed.splice(0);
     for (const abbr of retry) {
       await sleep(2500);
