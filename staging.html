@@ -238,16 +238,41 @@ async function fetchJSON(url, attempts = 4) {
   }
   throw last;
 }
-const FIRST_LIMIT = 500, MAX_LIMIT = 1e4, SERVER_ROW_CAP = 4e3, limitHint = /* @__PURE__ */ new Map();
+const FIRST_LIMIT = 500, MAX_LIMIT = 1e4, SERVER_ROW_CAP = 4e3, STATE_ROWS_HINT = { AL: 16, AK: 77, AZ: 180, AR: 1317, CA: 245, CO: 237, DE: 80, CT: 366, DC: 1, FL: 181, HI: 65, GA: 264, ID: 431, IL: 394, IA: 139, KS: 251, KY: 3345, IN: 4147, ME: 277, LA: 936, MD: 452, MA: 288, MI: 344, MS: 134, MO: 257, MT: 63, MN: 4736, NV: 369, NE: 465, NH: 308, NJ: 14, NM: 429, NY: 256, ND: 522, NC: 1383, OH: 165, OK: 185, OR: 9, PA: 249, RI: 124, SD: 9, SC: 706, TN: 12, UT: 5, TX: 726, VT: 474, VA: 590, WV: 4, WI: 13, WA: 1435, WY: 8 }, limitHint = /* @__PURE__ */ new Map();
+try {
+  const saved = JSON.parse(localStorage.getItem("en:limits") || "null");
+  saved && saved.t && Date.now() - saved.t < 14 * 864e5 && Object.entries(saved.v || {}).forEach(([k, v]) => limitHint.set(k, v));
+} catch {
+}
+let limitSaveT = null;
+const saveLimits = () => {
+  clearTimeout(limitSaveT), limitSaveT = setTimeout(() => {
+    try {
+      localStorage.setItem("en:limits", JSON.stringify({ t: Date.now(), v: Object.fromEntries(limitHint) }));
+    } catch {
+    }
+  }, 2e3);
+}, firstLimitFor = (key, params) => {
+  const h = limitHint.get(key);
+  if (h) return h;
+  const st = params && params.province && !params.query ? STATE_ROWS_HINT[params.province] : null;
+  return st != null ? Math.round(st * 1.1) + 60 : FIRST_LIMIT;
+};
 async function fetchPages(query, onProgress, _maxPages = MAX_PAGES, stopWhen = null) {
   const params = typeof query == "string" ? { query } : query, key = JSON.stringify(params);
-  let limit = Math.max(100, Math.min(MAX_LIMIT, limitHint.get(key) || FIRST_LIMIT));
+  let limit = Math.max(100, Math.min(MAX_LIMIT, firstLimitFor(key, params)));
   for (; ; ) {
     const qs = Object.entries({ ...params, offset: 0, limit }).filter(([, v]) => v !== void 0 && v !== "").map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&"), d = await fetchJSON(`${CIVIC}/race/search?${qs}`), seen = /* @__PURE__ */ new Set(), rs = (d.races || []).filter((r) => r && !seen.has(r.id) && seen.add(r.id));
     onProgress && onProgress(rs.length, null);
     const n = (d.races || []).length, short = n < limit;
-    if (!!stopWhen && (!rs.length || stopWhen(rs)) || short && n < SERVER_ROW_CAP)
-      return limitHint.set(key, Math.min(MAX_LIMIT, rs.length + 60)), rs;
+    if (!!stopWhen && (!rs.length || stopWhen(rs)) || short && n < SERVER_ROW_CAP) {
+      let need = rs.length;
+      if (stopWhen) {
+        const i = rs.findIndex((r) => stopWhen([r]));
+        i >= 0 && (need = i + 1);
+      }
+      return limitHint.set(key, Math.min(MAX_LIMIT, Math.round(Math.min(rs.length, need) * 1.1) + 60)), saveLimits(), rs;
+    }
     if (short || limit >= MAX_LIMIT) return Object.assign(rs, { truncated: !0 });
     limit = Math.min(MAX_LIMIT, limit * 4);
   }
