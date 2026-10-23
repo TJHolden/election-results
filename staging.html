@@ -234,7 +234,7 @@ async function fetchJSON(url, attempts = 4) {
       if (clearTimeout(tm), e.status && e.status < 500) throw e;
       last = e.name === "AbortError" ? new Error("timeout") : e.status ? e : Object.assign(new Error("CORS"), { cors: !0 });
     }
-    await sleep(last && last.status === 503 ? 1500 * (i + 1) : 600 * (i + 1));
+    await sleep(last && (last.status === 503 || last.cors) ? 1500 * (i + 1) : 600 * (i + 1));
   }
   throw last;
 }
@@ -313,8 +313,7 @@ async function fetchAll(query, onProgress, onPartial, onlyStates = null) {
   let firstErr = null, flushT = null;
   const flush = () => {
     flushT = null, onPartial && onPartial([...seen.values()].map(normalize));
-  }, order = [...onlyStates || Object.keys(STATE_NAMES)].sort((a, b) => (STATE_ROWS_HINT[b] || 0) - (STATE_ROWS_HINT[a] || 0));
-  if (await pmap(order, async (abbr) => {
+  }, all = onlyStates || Object.keys(STATE_NAMES), isBig = (ab) => (limitHint.get(JSON.stringify({ province: ab })) || STATE_ROWS_HINT[ab] || 0) > 2e3, doState = async (abbr) => {
     const pastRange = (page) => {
       const last = page[page.length - 1];
       return !!last && !!last.election_date && new Date(last.election_date).getTime() < startMs;
@@ -334,7 +333,8 @@ async function fetchAll(query, onProgress, onPartial, onlyStates = null) {
     } catch (e) {
       failed.push(abbr), firstErr = firstErr || e;
     }
-  }, 5), failed.length && failed.length < 10) {
+  };
+  if (await Promise.all([pmap(all.filter(isBig), doState, 1), pmap(all.filter((ab) => !isBig(ab)), doState, 3)]), failed.length && failed.length < 10) {
     const retry = failed.splice(0);
     for (const abbr of retry) {
       await sleep(2500);
