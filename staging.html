@@ -2124,8 +2124,13 @@ function ElectionCommandCenterInner() {
         const d = base24 && districtPrior(base24, race, "pres");
         r = d && d.race, label = "Trump\u2013Harris 2024 in this district";
       } else if (presEligible(race)) {
-        const d = pres24 && presPrior(pres24, race.abbr);
-        r = d && d.race, label = "Trump\u2013Harris 2024 statewide";
+        const bp = base24 && base24[race.abbr] && base24[race.abbr].pres;
+        if (bp) r = mkPrior({ abbr: race.abbr, name: "President", type: "President", dName: "Kamala Harris", rName: "Donald Trump", D: bp[0], R: bp[1], T: bp[2], id: `p24-${race.abbr}` });
+        else {
+          const d = pres24 && presPrior(pres24, race.abbr);
+          r = d && d.race;
+        }
+        label = "Trump\u2013Harris 2024 statewide";
       } else
         r = pickPrior(priors[race.id], 2024), label = r ? `2024 race for this seat: ${r.c1} vs ${r.c2} (district lines may have changed)` : "";
     else {
