@@ -122,7 +122,7 @@ function parseRaceKey(label, raceType) {
   if (m = t.match(/\b(?:state house|hd|house district|state house district|assembly|ad|assembly district|state assembly|house of delegates|delegate)\s*-?\s*(\d+)/)) return { office: "State House", district: num(m[1]) };
   if ((m = t.match(/\b(?:cd|congressional district|u s house|us house|house)\s*-?\s*(\d+)/)) || (m = t.match(/\b(\d+)(?:st|nd|rd|th)\s+congressional/)) || (m = t.match(/\b[a-z]{2}-(\d{1,2})\b/))) return { office: "House", district: num(m[1]) };
   if (/\bat[- ]large\b/.test(t) && /house|cd|congress/.test(t)) return { office: "House", district: "0" };
-  if (m = t.match(/\b(?:prop|proposition|amendment|measure|question|issue|initiative)\s*-?\s*([a-z0-9]+)/)) return { office: "Ballot", district: m[1].replace(/^0+/, "") };
+  if (m = t.match(/\b(?:prop|proposition|amendment|measure|question|issue|initiative)(?![a-z])(?:\s+(?:measure|no|number|num))?\s*-?\s*#?\s*([a-z0-9]+)/)) return { office: "Ballot", district: m[1].replace(/^0+/, "") };
   if (raceType) {
     const rt = String(raceType).toLowerCase();
     if (/senate/.test(rt) && !/state/.test(rt)) return { office: "Senate", district: null };
@@ -188,7 +188,7 @@ function normalize(raw) {
   const cands = [...raw.candidates || []].sort((a, b) => (b.votes || 0) - (a.votes || 0)), c1 = cands[0] || {}, c2 = cands[1] || {}, [level, type] = classify(raw), ballot = level === "Ballot Measure", ynRaw = (c) => /^(yes|for|approve|in favou?r|maintain|support)/i.test((c.name || "").trim()) ? "Y" : /^(no|against|reject|oppos|repeal)/i.test((c.name || "").trim()) ? "N" : null, yn = (c) => ynRaw(c) || (ynRaw(c === c1 ? c2 : c1) === "Y" ? "N" : ynRaw(c === c1 ? c2 : c1) === "N" || c === c1 ? "Y" : "N"), p1 = ballot ? yn(c1) : partyCode(c1.party), p2 = ballot ? yn(c2) : partyCode(c2.party), called = cands.some((c) => c.winner === !0), abbr = raw.province || "";
   let name = (raw.election_name || "").replace(/\s+/g, " ").trim();
   const sn = STATE_NAMES[abbr];
-  sn && name.startsWith(sn + " ") && (name = name.slice(sn.length + 1)), name = name.replace(/\s+(Local|General Election|General)$/i, "");
+  sn && name.startsWith(sn + " ") && (name = name.slice(sn.length + 1)), name = name.replace(/\s+(Local|General Election)$/i, ""), /\s+General$/i.test(name) && !/\b(Attorney|Solicitor|Auditor|Surveyor|Adjutant|Inspector|Comptroller|Accountant)\s+General$/i.test(name) && (name = name.replace(/\s+General$/i, ""));
   const others = cands.slice(2).filter((c) => (c.percent || 0) >= 1).map((c) => ({ name: (c.name || "").replace(/\s+/g, " ").trim(), party: partyCode(c.party), pct: c.percent || 0, votes: c.votes || 0 })), xc = cands.length > 2 && cands.length <= 12 ? cands.slice(2).map((c) => (c.name || "").replace(/\s+/g, " ").trim()) : void 0;
   return {
     id: raw.id,
@@ -836,8 +836,15 @@ async function readPollFile(file) {
   return txt.includes("	") && !txt.split(`
 `)[0].includes(",") ? txt.replace(/\t/g, ",") : txt;
 }
-const lastName = (n) => String(n || "").toLowerCase().replace(/[^a-z\s'-]/g, " ").split(/\s+/).filter((x) => x && !/^(jr|sr|ii|iii|iv)$/.test(x)).pop() || "";
+const lastName = (n) => String(n || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z\s'-]/g, " ").split(/\s+/).filter((x) => x && !/^(jr|sr|ii|iii|iv)$/.test(x)).pop() || "", ynOf = (n) => /^\s*(yes|for|approve|support|in favou?r)\b/i.test(n || "") ? "Y" : /^\s*(no|against|reject|oppose)\b/i.test(n || "") ? "N" : null;
 function candShare(r, name) {
+  if (r.level === "Ballot Measure") {
+    const yn = ynOf(name);
+    if (yn) {
+      if (r.p1 === yn) return { pct: r.a1, votes: r.v1, party: r.p1 };
+      if (r.p2 === yn) return { pct: r.a2, votes: r.v2, party: r.p2 };
+    }
+  }
   const l = lastName(name);
   if (!l) return null;
   if (lastName(r.c1) === l) return { pct: r.a1, votes: r.v1, party: r.p1 };
@@ -2092,10 +2099,13 @@ function ElectionCommandCenterInner() {
     }), pollRows.map((p, i) => {
       const pool = byState[p.abbr] || [];
       let race = null;
-      p.key && (race = pool.find((r) => {
+      if (p.key && (race = pool.find((r) => {
         const rk = raceKeyOf(r);
         return rk && rk.office === p.key.office && (rk.district || null) === (p.key.district || null);
-      }) || null), !race && !p.key && (race = pool.find((r) => r.name.toLowerCase() === p.raceName.toLowerCase() || r.name.toLowerCase().includes(p.raceName.toLowerCase())) || null);
+      }) || null), !race && !p.key) {
+        const q = p.raceName.toLowerCase().trim();
+        race = q && (pool.find((r) => r.name.toLowerCase() === q || (r.type || "").toLowerCase() === q) || pool.find((r) => r.name.toLowerCase().includes(q))) || null;
+      }
       const s1 = race ? candShare(race, p.n1) : null, s2 = race ? candShare(race, p.n2) : null, status2 = race ? !p.n1 || !p.n2 || s1 && s2 ? "matched" : "names" : "missing", counted = race && race.v1 + race.v2 > 0, pm = (p.poll1 || 0) - (p.poll2 || 0), am = counted && s1 && s2 ? s1.pct - s2.pct : null;
       return { i, p, race, status: status2, s1, s2, pm, am, err: am == null ? null : am - pm };
     });
