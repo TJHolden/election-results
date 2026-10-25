@@ -541,7 +541,7 @@ const BASE24_URL = "base-2024.json";
 let base24P = null;
 const racesFileP = {};
 function loadRacesYear(y) {
-  return racesFileP[y] || (racesFileP[y] = fetch(`races-${y}.json`).then((r) => {
+  return racesFileP[y] || (racesFileP[y] = fetch(`races-${y}.json?v=2`).then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json();
   }).catch((e) => {
