@@ -536,9 +536,9 @@ async function findPriorLite(race, officialOnly = !1) {
   }
   return Object.keys(byYear).length || gaps.length ? { byYear, order, gaps } : null;
 }
-function pickPrior(p, want) {
+function pickPrior(p, want, race) {
   if (!p || !p.byYear) return null;
-  const ys = (p.order || Object.keys(p.byYear).map(Number).sort((a, b) => b - a)).filter((y) => p.byYear[y]);
+  const ys = (p.order || (race ? priorYears(race) : null) || Object.keys(p.byYear).map(Number).sort((a, b) => b - a)).filter((y) => p.byYear[y]);
   return ys.length ? want === "last" ? p.byYear[ys[0]] : p.byYear[want] || null : null;
 }
 const PRES24_URL = "https://raw.githubusercontent.com/tonmcg/US_County_Level_Election_Results_08-24/master/2024_US_County_Level_Presidential_Results.csv", PRES24_DATE = "2024-11-05T12:00:00.000Z";
@@ -2349,9 +2349,9 @@ function ElectionCommandCenterInner() {
           }
           const by = {};
           Object.entries(p.byYear).forEach(([y, r]) => {
-            by[y] = { id: r.id, state: r.state, abbr: r.abbr, level: r.level, type: r.type, name: r.name, electionDate: r.electionDate, district: r.district, c1: r.c1, c2: r.c2, p1: r.p1, p2: r.p2, a1: r.a1, a2: r.a2, v1: r.v1, v2: r.v2, rpt: r.rpt, rptRaw: r.rptRaw, called: r.called, others: [] };
-          }), slim[id] = { byYear: by };
-        }), lsSet("priors:official-v1", slim);
+            by[y] = { id: r.id, state: r.state, abbr: r.abbr, level: r.level, type: r.type, name: r.name, electionDate: r.electionDate, district: r.district, c1: r.c1, c2: r.c2, p1: r.p1, p2: r.p2, a1: r.a1, a2: r.a2, v1: r.v1, v2: r.v2, rpt: r.rpt, rptRaw: r.rptRaw, called: r.called, others: [], ...r.src ? { src: r.src } : {}, ...r.source ? { source: r.source } : {}, ...r.otherSeat ? { otherSeat: !0 } : {} };
+          }), slim[id] = { byYear: by, ...p.order ? { order: p.order } : {} };
+        }), lsSet("priors:official-v2", slim);
       }, 5e3), () => clearTimeout(priorsSaveT.current);
   }, [priors]), useEffect(() => {
     if (!mapFull) return;
@@ -2460,7 +2460,7 @@ function ElectionCommandCenterInner() {
       const cached = lsGet(`races:${sq.toLowerCase()}`, 1296e5);
       if (cached && cached.length) {
         setRaces(cached), record(cached, fresh), lastQ.current = sq.toLowerCase(), loadedQ.current = sq, setApi("live"), apiRef.current = "live", wasLive = !0, setApiMsg(`${cached.length.toLocaleString()} races for "${sq}" (from last visit \u2014 refreshing\u2026)`);
-        const cp = lsGet("priors:official-v1", 168 * 36e5);
+        const cp = lsGet("priors:official-v2", 168 * 36e5);
         if (cp) {
           const keep = {};
           cached.forEach((r) => {
@@ -2561,7 +2561,7 @@ function ElectionCommandCenterInner() {
     const keepB = new Set([...bm.values()].map((r) => r.id)), base = shown.filter((r) => r.level !== "Ballot Measure" || keepB.has(r.id)), isPres = cmpYear === "pres24" || cmpYear === "house24", priorFor = (r) => cmpYear === "house24" ? r.type === "House" && base24 && (districtPrior(base24, r, "house") || {}).race || null : r.type === "House" ? base24 && (districtPrior(base24, r, "pres") || {}).race || null : pres24 && presEligible(r) && (presPrior(pres24, r.abbr) || {}).race || null;
     return base.map((r) => {
       let o = r;
-      const pr0 = isPres ? priorFor(r) : pickPrior(priors[r.id], cmpYear), pr = pr0 && !priorOk(r, pr0) ? null : pr0, unc = pr && (isUncontested(r) || isUncontested(pr));
+      const pr0 = isPres ? priorFor(r) : pickPrior(priors[r.id], cmpYear, r), pr = pr0 && !priorOk(r, pr0) ? null : pr0, unc = pr && (isUncontested(r) || isUncontested(pr));
       if (pr && (o = { ...o, prior: pr, priorYears: isPres ? [2024] : Object.keys(priors[r.id].byYear).map(Number).sort((a, b) => b - a), shift: unc ? null : shiftOf(o, pr), turnout: unc ? null : turnoutRatio(o, pr), flip: !isPres && isDecided(o) && !isUncontested(o) && leaderOf(o) !== leaderOf(pr) && pr.v1 + pr.v2 > 0 }), pollRows.length) {
         const rk = raceKeyOf(r), stOk = (p) => p.abbr === r.abbr || p.state.toLowerCase() === r.state.toLowerCase();
         let hits = pollRows.filter((p) => stOk(p) && p.key && rk && p.key.office === rk.office && (p.key.district || null) === (rk.district || null));
