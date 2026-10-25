@@ -725,6 +725,7 @@ function priorYears(race) {
   const yr = yearOf(race) || 2026;
   return race.type === "Senate" ? /special/i.test(race.name || "") ? [yr - 4, yr - 6, yr - 2] : [yr - 6, yr - 4, yr - 2] : race.type === "Governor" ? ["NH", "VT"].includes(race.abbr) ? [yr - 2, yr - 4] : [yr - 4, yr - 2] : race.level === "Statewide" ? [yr - 4, yr - 2] : [yr - 2, yr - 4];
 }
+typeof window != "undefined" && (window.__enDbg = { priorYears: (r) => priorYears(r), officialPrior: (r, y) => officialPrior(r, y), loadHist: (y, a) => loadHist(y, a), yearOf: (r) => yearOf(r) });
 async function officialPrior(race, y) {
   if (!HIST_YEARS.includes(y)) return null;
   const h = await loadHist(y, race.abbr), rec = histRec(h, race);
