@@ -625,7 +625,7 @@ const linesInfo = (r) => {
   return !y || !pr ? !0 : ((_a = yearOf(pr)) != null ? _a : 2024) >= y;
 }, NewLinesMark = ({ r }) => {
   const t = linesInfo(r);
-  return t ? /* @__PURE__ */ React.createElement("span", { title: t, "aria-label": "district lines changed", style: { color: T.goldText, fontWeight: 800, marginLeft: 2, cursor: "help" } }, "*") : null;
+  return t ? /* @__PURE__ */ React.createElement("span", { title: t, "aria-label": "district lines changed", style: { color: T.goldText, fontWeight: 700, fontFamily: SANS, fontSize: "0.72em", letterSpacing: 0.2, marginLeft: 5, whiteSpace: "nowrap", cursor: "help", verticalAlign: "baseline" } }, "* new lines") : null;
 };
 function districtPrior(base, r, kind) {
   if (r.type === "House" && HOUSE_LINES_NEW_2026.has(r.abbr)) return null;
