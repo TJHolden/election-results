@@ -584,8 +584,8 @@ function mkPrior({ abbr, name, type, dName, rName, D, R, T: T2, id }) {
 const HOUSE_LINES_NEW_2026 = /* @__PURE__ */ new Set(["AL", "CA", "FL", "LA", "NC", "OH", "TN", "TX", "UT"]), HOUSE_LINES_CHANGED_SINCE_2022 = /* @__PURE__ */ new Set([...HOUSE_LINES_NEW_2026, "GA", "NY"]), LEG_LINES = {
   "GA|State Senate": { y: 2024 },
   "GA|State House": { y: 2024 },
-  "MI|State House": { y: 2024, some: !0 },
-  "MI|State Senate": { y: 2026, some: !0 },
+  "MI|State House": { y: 2024, only: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14"] },
+  "MI|State Senate": { y: 2026, only: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "13", "23", "24"] },
   "MN|State Senate": { y: 2024, only: ["9", "12", "17", "24"] },
   "MS|State Senate": { y: 2025, some: !0 },
   "MS|State House": { y: 2025, some: !0 },
