@@ -460,7 +460,8 @@ async function fetchDetail(id) {
     registered: raw.registered_voters,
     candidates: raw.candidates || [],
     regions,
-    byName: Object.fromEntries(regions.map((r) => [normName(r.name), r]))
+    byName: Object.fromEntries([...regions.filter((r) => /town/i.test(r.type || "")), ...regions.filter((r) => !/town/i.test(r.type || ""))].map((r) => [normName(r.name), r])),
+    byTown: Object.fromEntries(regions.filter((r) => /town/i.test(r.type || "")).map((r) => [unitKey(r.name), r]))
   }, past = raw.election_date && new Date(raw.election_date).getTime() < Date.now() - 7 * 864e5;
   return detailCache.set(id, { d, t: Date.now(), final: past && (raw.percent_reporting || 0) >= 100 }), d;
 }
@@ -487,39 +488,57 @@ const sameSeat = (race, r) => r.type === race.type && (!race.district || r.distr
 async function findPrior(race, wantYear) {
   const key = `${race.abbr}|${race.type}|${race.name}|${race.district}|${wantYear || "last"}`;
   if (histCache.has(key)) return histCache.get(key);
-  const yr = yearOf(race) || 2026, years = wantYear ? [wantYear] : priorYears(race), pool = await officePool(race.state, race.abbr, officeWord(race.type));
-  let best = null;
+  const years = wantYear ? [wantYear] : priorYears(race);
+  let out = null;
   for (const y of years) {
-    const hit = bestIn(pool.filter((r) => yearOf(r) === y && sameSeat(race, r) && r.v1 + r.v2 > 0));
-    if (hit) {
-      best = hit;
+    if (HIST_YEARS.includes(y)) {
+      const o = await officialPrior(race, y).catch(() => null);
+      if (o && o.none) continue;
+      if (o) {
+        out = o;
+        break;
+      }
+    }
+    const pool = await officePool(race.state, race.abbr, officeWord(race.type)), best = bestIn(pool.filter((r) => yearOf(r) === y && sameSeat(race, r) && r.v1 + r.v2 > 0));
+    if (best) {
+      try {
+        out = { race: best, detail: await fetchDetail(best.id) };
+      } catch {
+        out = { race: best, detail: null };
+      }
       break;
     }
   }
-  let out = null;
-  if (best)
-    try {
-      out = { race: best, detail: await fetchDetail(best.id) };
-    } catch {
-      out = { race: best, detail: null };
-    }
   return histCache.set(key, out), out;
 }
-function priorYears(race) {
-  const yr = yearOf(race) || 2026;
-  return race.type === "Senate" ? [yr - 6, yr - 4, yr - 2] : race.type === "Governor" ? [yr - 4, yr - 2] : [yr - 2, yr - 4];
-}
-async function findPriorLite(race) {
-  const pool = await officePool(race.state, race.abbr, officeWord(race.type)), byYear = {};
-  for (const y of priorYears(race)) {
-    const hit = bestIn(pool.filter((r) => yearOf(r) === y && sameSeat(race, r) && r.v1 + r.v2 > 0));
-    hit && (byYear[y] = hit);
+async function findPriorLite(race, officialOnly = !1) {
+  const byYear = {}, order = priorYears(race), gaps = [];
+  let pool = null;
+  for (const y of order) {
+    if (HIST_YEARS.includes(y)) {
+      const o = await officialPrior(race, y).catch(() => null);
+      if (o && o.none) continue;
+      if (o) {
+        byYear[y] = o.race;
+        continue;
+      }
+    }
+    if (officialOnly) {
+      gaps.push(y);
+      continue;
+    }
+    try {
+      pool || (pool = await officePool(race.state, race.abbr, officeWord(race.type)));
+      const hit = bestIn(pool.filter((r) => yearOf(r) === y && sameSeat(race, r) && r.v1 + r.v2 > 0));
+      hit && (byYear[y] = hit);
+    } catch {
+    }
   }
-  return Object.keys(byYear).length ? { byYear } : null;
+  return Object.keys(byYear).length || gaps.length ? { byYear, order, gaps } : null;
 }
 function pickPrior(p, want) {
   if (!p || !p.byYear) return null;
-  const ys = Object.keys(p.byYear).map(Number).sort((a, b) => b - a);
+  const ys = (p.order || Object.keys(p.byYear).map(Number).sort((a, b) => b - a)).filter((y) => p.byYear[y]);
   return ys.length ? want === "last" ? p.byYear[ys[0]] : p.byYear[want] || null : null;
 }
 const PRES24_URL = "https://raw.githubusercontent.com/tonmcg/US_County_Level_Election_Results_08-24/master/2024_US_County_Level_Presidential_Results.csv", PRES24_DATE = "2024-11-05T12:00:00.000Z";
@@ -583,7 +602,7 @@ const BASE24_URL = "base-2024.json";
 let base24P = null;
 const racesFileP = {};
 function loadRacesYear(y) {
-  return racesFileP[y] || (racesFileP[y] = fetch(`races-${y}.json?v=2`).then((r) => {
+  return racesFileP[y] || (racesFileP[y] = fetch(`races-${y}.json?v=3`).then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     return r.json();
   }).catch((e) => {
@@ -621,6 +640,100 @@ function fileResult(file, race, yr) {
     } };
   }
   return kind === "S" ? { why: key === "US SENATE" || key === "GOVERNOR" && Object.keys(st.S || {}).length ? "no race" : "not on file" } : kind === "CD" ? { why: "not on file" } : NO_EVEN_YEAR_LEG.has(race.abbr) || LEG_NOT_UP[yr] && LEG_NOT_UP[yr].has(`${race.abbr}|${kind}`) ? { why: "no race" } : Object.keys(st[kind] || {}).length ? { why: (kind === "HD" ? !["AL", "MD"].includes(race.abbr) : FULL_CHAMBER_SD.has(race.abbr)) ? "not on file" : "no race" } : { why: "not on file" };
+}
+const HIST_YEARS = [2024, 2022, 2020], histP = {}, HIST_2020 = new Set("AK AL AR CO DE GA IA ID IL LA MN MS MT NM OK OR RI SC SD TN WV WY".split(" "));
+function loadHist(y, ab) {
+  if (y === 2020 && !HIST_2020.has(ab)) return Promise.resolve(null);
+  const k = `${y}|${ab}`;
+  return histP[k] || (histP[k] = fetch(`hist/${y}/${ab}.json?v=2`).then((r) => r.ok ? r.json() : null).catch(() => (delete histP[k], null))), histP[k];
+}
+const unitKey = (s) => normName(s).replace(/^saint/, "st"), townLoose = (s) => unitKey(String(s || "").trim().replace(/\s+(town|city|plantation|plt|township|twps?|gore|grant|location|purchase|unorganized territory|ut)$/i, ""));
+function regionOf(d, reg) {
+  if (!d) return null;
+  const name = typeof reg == "string" ? reg : reg && reg.name;
+  if (!name) return null;
+  const isTown = typeof reg != "string" && /town/i.test(reg.type || ""), byT = () => d.byTown && (d.byTown[unitKey(name)] || d.byTown[townLoose(name)]) || null;
+  return isTown ? byT() : d.byName && (d.byName[normName(name)] || d.byName[unitKey(name)] || d.byName[unitKey(String(name).replace(/\s+city$/i, ""))]) || byT() || null;
+}
+const OFFICE_ALIASES = {
+  "STATE TREASURER": ["TREASURER", "TREASURER OF STATE"],
+  TREASURER: ["STATE TREASURER", "TREASURER OF STATE"],
+  "STATE AUDITOR": ["AUDITOR", "AUDITOR OF STATE", "AUDITOR OF PUBLIC ACCOUNTS", "AUDITOR OF ACCOUNTS", "STATE AUDITOR AND INSPECTOR"],
+  AUDITOR: ["STATE AUDITOR", "AUDITOR OF STATE", "AUDITOR OF PUBLIC ACCOUNTS", "AUDITOR OF ACCOUNTS"],
+  CONTROLLER: ["STATE CONTROLLER", "COMPTROLLER"],
+  "STATE CONTROLLER": ["CONTROLLER"],
+  COMPTROLLER: ["STATE COMPTROLLER", "COMPTROLLER GENERAL"],
+  "SECRETARY OF STATE": ["SECRETARY OF THE STATE", "SECRETARY OF THE COMMONWEALTH"],
+  "ATTORNEY GENERAL": ["STATE ATTORNEY GENERAL"],
+  "SUPERINTENDENT OF PUBLIC INSTRUCTION": ["STATE SUPERINTENDENT", "SUPERINTENDENT", "STATE SUPERINTENDENT OF PUBLIC INSTRUCTION"],
+  "STATE SUPERINTENDENT": ["STATE SCHOOL SUPERINTENDENT", "SUPERINTENDENT OF PUBLIC INSTRUCTION", "STATE SUPERINTENDENT OF EDUCATION"],
+  "AGRICULTURE COMMISSIONER": ["COMMISSIONER OF AGRICULTURE", "COMMISSIONER OF AGRICULTURE AND INDUSTRIES"],
+  "COMMISSIONER OF AGRICULTURE": ["AGRICULTURE COMMISSIONER"],
+  "INSURANCE COMMISSIONER": ["COMMISSIONER OF INSURANCE"],
+  "LABOR COMMISSIONER": ["COMMISSIONER OF LABOR"],
+  "COMMISSIONER OF PUBLIC LANDS": ["COMMISSIONER OF STATE LANDS"]
+};
+function histRec(h, race) {
+  if (!h || !race) return null;
+  if (race.type === "House") {
+    const k = cdOf(race);
+    return k && h[`CD|${k}`] || null;
+  }
+  if (race.type === "State Senate" || race.type === "State House") {
+    const k = legNum(race);
+    return k && h[`${race.type === "State Senate" ? "SD" : "HD"}|${k}`] || null;
+  }
+  if (race.level === "Ballot Measure" || race.level === "Local") return null;
+  const o = STATEWIDE_OFFICE(race.type);
+  for (const k of [o, ...OFFICE_ALIASES[o] || []])
+    if (h[`S|${k}`]) return h[`S|${k}`];
+  return null;
+}
+function histPrior(rec, race, yr) {
+  if (!rec || !rec.T || !rec.c || !rec.c.length) return null;
+  const pc2 = (p) => p === "?" ? "I" : p, [a, b] = rec.c, [va, vb = 0] = rec.v, T2 = rec.T, r = {
+    id: `h${yr}-${race.abbr}-${race.type}-${race.district || race.name}`,
+    abbr: race.abbr,
+    state: race.state,
+    type: race.type,
+    name: race.name,
+    level: race.level,
+    district: race.district || "",
+    municipality: "",
+    electionDate: `${yr}-11-0${yr === 2022 ? 8 : yr === 2024 ? 5 : 3}T12:00:00.000Z`,
+    c1: a[0],
+    p1: pc2(a[1]),
+    v1: va,
+    a1: 100 * va / T2,
+    c2: b ? b[0] : "\u2014",
+    p2: b ? pc2(b[1]) : "?",
+    v2: vb,
+    a2: 100 * vb / T2,
+    others: rec.c.slice(2).map((c, i) => ({ name: c[0], party: pc2(c[1]), votes: rec.v[i + 2] || 0, pct: 100 * (rec.v[i + 2] || 0) / T2 })),
+    rpt: 100,
+    called: !0,
+    winner: pc2(a[1]),
+    src: yr === 2020 ? "oe" : "mit",
+    ...rec.sp ? { special: !0 } : {}
+  }, mkReg = (key, arr, type) => {
+    const t = arr[arr.length - 1] || 0, x = arr[0] || 0, y = arr[1] || 0, aFirst = x >= y, p1 = aFirst ? r.p1 : r.p2, p2 = aFirst ? r.p2 : r.p1, v1 = Math.max(x, y), v2 = Math.min(x, y), a1 = t ? 100 * v1 / t : 0, a2 = t ? 100 * v2 / t : 0, margin = p1 === "D" && p2 === "R" ? a1 - a2 : p1 === "R" && p2 === "D" ? a2 - a1 : a1 - a2;
+    return { key, name: key, type, rpt: 100, total: t, c1: aFirst ? r.c1 : r.c2, c2: aFirst ? r.c2 : r.c1, p1, p2, a1, a2, v1, v2, margin, lead: t > 0 ? p1 : null, cands: [] };
+  }, cs = Object.entries(rec.u && rec.u.c || {}).map(([k, v]) => mkReg(k, v, "County")), ts = Object.entries(rec.u && rec.u.t || {}).map(([k, v]) => mkReg(k, v, "Town")), detail = { id: r.id, name: `${race.name} ${yr} (official)`, date: r.electionDate, rpt: 100, candidates: [], regions: cs.length ? cs : ts, byName: Object.fromEntries(cs.map((g) => [g.key, g])), byTown: Object.fromEntries(ts.map((g) => [g.key, g])), src: "mit" };
+  return { race: r, detail };
+}
+function priorYears(race) {
+  const yr = yearOf(race) || 2026;
+  return race.type === "Senate" ? /special/i.test(race.name || "") ? [yr - 4, yr - 6, yr - 2] : [yr - 6, yr - 4, yr - 2] : race.type === "Governor" ? ["NH", "VT"].includes(race.abbr) ? [yr - 2, yr - 4] : [yr - 4, yr - 2] : race.level === "Statewide" ? [yr - 4, yr - 2] : [yr - 2, yr - 4];
+}
+async function officialPrior(race, y) {
+  if (!HIST_YEARS.includes(y)) return null;
+  const h = await loadHist(y, race.abbr), rec = histRec(h, race);
+  if (rec && rec.c && rec.c.slice(0, 2).some((c) => c[1] === "?")) return null;
+  if (rec) {
+    const o = histPrior(rec, race, y);
+    return o && race.type === "Senate" && y !== priorYears(race)[0] && (o.race.otherSeat = !0), o;
+  }
+  return h && y !== 2020 && (race.type === "House" || race.level === "State Legislative" && Object.keys(h).some((k) => k.startsWith(race.type === "State Senate" ? "SD|" : "HD|")) || race.type === "Senate" && Object.keys(h).some((k) => k.startsWith("CD|"))) ? { none: !0 } : null;
 }
 function loadBase24() {
   return base24P || (base24P = fetch(BASE24_URL).then((r) => {
@@ -733,41 +846,60 @@ function districtPrior(base, r, kind) {
 const votesOf = (r, party) => r ? r.p1 === party ? r.v1 : r.p2 === party ? r.v2 : 0 : 0, kfmt = (n) => n >= 1e6 ? (n / 1e6).toFixed(2).replace(/\.?0+$/, "") + "M" : n >= 1e4 ? Math.round(n / 1e3) + "K" : n >= 1e3 ? (n / 1e3).toFixed(1) + "K" : String(Math.round(n));
 function rawVs(now, pr) {
   if (!pr) return "";
-  const pd = votesOf(pr, "D"), prr = votesOf(pr, "R"), dn = pr.p1 === "D" ? pr.c1 : pr.c2, rn = pr.p1 === "R" ? pr.c1 : pr.c2, last = (n) => (n || "").split(/\s+/).filter(Boolean).pop() || n;
+  if (!drPair(pr)) {
+    const last2 = (n) => (n || "").split(/\s+/).filter((w) => w && !/^(jr|sr|ii|iii|iv)\.?$/i.test(w)).pop() || n;
+    return `${last2(pr.c1)} (${pr.p1}) ${kfmt(pr.v1)} \xB7 ${last2(pr.c2)} (${pr.p2}) ${kfmt(pr.v2)}`;
+  }
+  const pd = votesOf(pr, "D"), prr = votesOf(pr, "R"), dn = pr.p1 === "D" ? pr.c1 : pr.c2, rn = pr.p1 === "R" ? pr.c1 : pr.c2, last = (n) => (n || "").split(/\s+/).filter((w) => w && !/^(jr|sr|ii|iii|iv)\.?$/i.test(w)).pop() || n;
   let t = `${last(dn)} ${kfmt(pd)} \xB7 ${last(rn)} ${kfmt(prr)}`;
   const nd = votesOf(now, "D"), nr = votesOf(now, "R");
   return now && nd + nr > 0 && pd && prr && (t += ` \u2014 tonight D at ${Math.round(100 * nd / pd)}% of that, R at ${Math.round(100 * nr / prr)}%`), t;
 }
 const cmpLabel = (y) => y === "house24" ? "2024 House race" : y === "pres24" ? "2024 President" : y === "last" ? "Most recent" : `${y} same office${y % 4 === 0 ? " (pres. year)" : " (midterm)"}`;
 async function loadPriors(races, onEach, concurrency = 6) {
-  const queue = [...races];
-  let active = 0;
-  return new Promise((resolve) => {
+  const run = (list, n, fn) => new Promise((resolve) => {
+    const q = [...list];
+    let active = 0;
     const next = () => {
-      if (!queue.length && active === 0) return resolve();
-      for (; active < concurrency && queue.length; ) {
-        const r = queue.shift();
-        active++, findPriorLite(r).then((p) => onEach(r.id, p)).catch(() => onEach(r.id, null)).finally(() => {
+      if (!q.length && active === 0) return resolve();
+      for (; active < n && q.length; ) {
+        const r = q.shift();
+        active++, fn(r).catch(() => {
+        }).finally(() => {
           active--, next();
         });
       }
     };
     next();
+  }), later = [];
+  await run(races, 12, async (r) => {
+    const p = await findPriorLite(r, !0).catch(() => null), has = p && Object.keys(p.byYear).length;
+    p && p.gaps.length && later.push(r), (has || !(p && p.gaps.length)) && onEach(r.id, has ? { byYear: p.byYear, order: p.order } : null);
+  }), await run(later, concurrency, async (r) => {
+    const p = await findPriorLite(r, !1).catch(() => null);
+    onEach(r.id, p && Object.keys(p.byYear).length ? { byYear: p.byYear, order: p.order } : null);
   });
 }
 function shiftOf(race, prior) {
-  return prior ? signedMargin(race) - signedMargin(prior) : null;
+  if (!prior) return null;
+  const pair = (r) => [r.p1, r.p2].sort().join("");
+  return pair(race) !== pair(prior) ? null : signedMargin(race) - signedMargin(prior);
 }
 function turnoutRatio(race, prior) {
   if (!prior || !(prior.v1 + prior.v2)) return null;
   const now = race.v1 + race.v2;
   return (race.rpt > 0 && race.rpt < 100 ? now / (race.rpt / 100) : now) / (prior.v1 + prior.v2);
 }
-const historyCache = /* @__PURE__ */ new Map();
+const historyCache = /* @__PURE__ */ new Map(), sameSeatOk = (race, r) => !(race.type === "House" || race.level === "State Legislative") || priorOk(race, r);
 async function findHistory(race, cycles = 3) {
   const key = `H|${race.abbr}|${race.type}|${race.name}|${race.district}`;
   if (historyCache.has(key)) return historyCache.get(key);
   const yr = yearOf(race) || 2026, statewide = race.level === "Statewide" || race.type === "Senate" || race.type === "President", out = [], pick = async (type, y, filter) => {
+    if (HIST_YEARS.includes(y)) {
+      const o = await officialPrior(type === race.type ? race : { ...race, type, level: type === "Senate" ? "Federal" : race.level, name: type }, y).catch(() => null);
+      if (o && o.none) return null;
+      if (o && (type !== race.type || sameSeatOk(race, o.race))) return o.race;
+    }
     const pool = await officePool(race.state, race.abbr, officeWord(type));
     return bestIn(pool.filter((r) => yearOf(r) === y && r.v1 + r.v2 > 0 && filter(r)));
   };
@@ -829,7 +961,11 @@ function regionColor(r) {
   const hx = (pc(r.p1) || "#7d8797").replace("#", "").slice(0, 6), base = [0, 2, 4].map((i) => parseInt(hx.substr(i, 2), 16)), a = Math.min(1, 0.25 + Math.abs((r.a1 || 0) - (r.a2 || 0)) / 40), bg = [246, 243, 236];
   return `rgb(${base.map((c, i) => Math.round(bg[i] + (c - bg[i]) * a)).join(",")})`;
 }
-const regionLead = (r) => drPair(r) ? `${r.margin >= 0 ? "D" : "R"}+${Math.abs(r.margin).toFixed(1)}` : `${r.p1 || "?"}+${Math.abs((r.a1 || 0) - (r.a2 || 0)).toFixed(1)}`;
+const regionSigned = (r) => drPair(r) ? r.margin : r.p1 === "R" ? -((r.a1 || 0) - (r.a2 || 0)) : r.p2 === "R" ? (r.a1 || 0) - (r.a2 || 0) : null, regionShift = (r, pr) => {
+  if (!r || !pr || !r.total || [r.p1, r.p2].sort().join("") !== [pr.p1, pr.p2].sort().join("")) return null;
+  const a = regionSigned(r), b = regionSigned(pr);
+  return a == null || b == null ? null : a - b;
+}, regionLead = (r) => drPair(r) ? `${r.margin >= 0 ? "D" : "R"}+${Math.abs(r.margin).toFixed(1)}` : `${r.p1 || "?"}+${Math.abs((r.a1 || 0) - (r.a2 || 0)).toFixed(1)}`;
 function ballotColor(r) {
   const yes = r.p1 === "Y" ? r.a1 : r.p2 === "Y" ? r.a2 : null;
   if (yes == null) return T.border2;
@@ -1024,15 +1160,20 @@ function Sparkline({ pts, w = 64, h = 20, color }) {
 function Trend({ race, hist }) {
   if (isDecided(race)) return null;
   if (race.v1 + race.v2 === 0) return /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 11, color: T.text3 } }, "No votes yet");
+  const est = React.useContext(EstCtx), q = est && est.proj && est.proj.byId[race.id];
+  if (q && !q.done && !q.noVotes && q.p != null) {
+    const pD = q.p, w = pD >= 0.5 ? "D" : "R", conf = Math.max(pD, 1 - pD), pct = conf > 0.99 ? ">99" : Math.round(conf * 100), tag = conf >= 0.95 ? "Likely" : conf >= 0.75 ? "Lean" : "Toss-up";
+    return /* @__PURE__ */ React.createElement("span", { title: `Estimate from votes counted so far and votes still expected \u2014 not a race call. ${pct}% chance ${w === "D" ? "the Democrat" : "the Republican"} wins.`, style: { fontFamily: SANS, fontSize: 11, color: tag === "Toss-up" ? T.amber : pc(w, !0), cursor: "help" } }, tag === "Toss-up" ? `Toss-up \xB7 ${pct}% ${w}` : `${tag} ${w} \xB7 ${pct}%`);
+  }
   const m = marginOf(race);
-  if (Math.abs(m) < 1) return /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 11, color: T.amber } }, "Toss-up");
+  if (Math.abs(m) < 1) return /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 11, color: T.amber } }, "Close");
   const lead = leaderOf(race), pts = hist || [];
   let drift = "";
   if (pts.length >= 3) {
     const d = pts[pts.length - 1].m - pts[Math.max(0, pts.length - 4)].m, towardLead = m > 0 && d > 0 || m < 0 && d < 0;
     Math.abs(d) > 0.3 && (drift = towardLead ? " widening" : " tightening");
   }
-  return /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 11, color: pc(lead, !0) } }, "Leaning ", lead, drift);
+  return /* @__PURE__ */ React.createElement("span", { title: "Who is ahead in the votes counted so far (no projection for this race)", style: { fontFamily: SANS, fontSize: 11, color: pc(lead, !0) } }, lead === "Y" ? "Yes" : lead === "N" ? "No" : lead, " ahead", drift);
 }
 const isLowerChamber = (r) => r.type === "State House" || r.type === "State Assembly" || r.type === "House of Delegates", modeFilter = (r, mode) => mode === "All" ? r.level !== "Local" : mode === "Senate" ? r.type === "Senate" : mode === "Governor" ? r.type === "Governor" : mode === "House" ? r.type === "House" : mode === "State Leg:Both" ? r.level === "State Legislative" : mode === "State Leg:Senate" ? r.type === "State Senate" : mode === "State Leg:House" ? isLowerChamber(r) : mode === "Ballot" ? r.level === "Ballot Measure" : !0, chamberLead = (rs) => {
   const d = rs.filter((r) => isDecided(r) && leaderOf(r) === "D").length, x = rs.filter((r) => isDecided(r) && leaderOf(r) === "R").length, dl = rs.filter((r) => leaderOf(r) === "D").length, rl = rs.filter((r) => leaderOf(r) === "R").length;
@@ -1166,14 +1307,14 @@ function GeoMap({ feats, results, prior, view, hover, setHover, onPick, ballot }
   }, [feats]), lookup = useCallback((f) => {
     var _a;
     return (_a = results == null ? void 0 : results.byName) == null ? void 0 : _a[normName(f.properties.name)];
-  }, [results]), priorLookup = useCallback((f) => {
-    var _a;
-    return (_a = prior == null ? void 0 : prior.byName) == null ? void 0 : _a[normName(f.properties.name)];
-  }, [prior]);
+  }, [results]), priorLookup = useCallback((f) => regionOf(prior, f.properties.name), [prior]);
   return /* @__PURE__ */ React.createElement("svg", { viewBox: "0 0 560 420", style: { width: "100%", height: "auto", display: "block" } }, fc.features.map((f) => {
     const r = lookup(f), pr = priorLookup(f);
     let fill;
-    view === "swing" ? fill = r && pr && r.total > 0 ? swingColor((r.margin - pr.margin) * 0.55) : T.border2 : ballot ? fill = r && r.total > 0 ? ballotColor(r) : T.border2 : fill = r ? regionColor(r) : T.border2;
+    if (view === "swing") {
+      const sh = regionShift(r, pr);
+      fill = sh != null ? swingColor(sh * 0.55) : T.border2;
+    } else ballot ? fill = r && r.total > 0 ? ballotColor(r) : T.border2 : fill = r ? regionColor(r) : T.border2;
     const isH = hover === f.properties.name;
     return /* @__PURE__ */ React.createElement(
       "path",
@@ -1194,7 +1335,7 @@ function GeoMap({ feats, results, prior, view, hover, setHover, onPick, ballot }
     const r = lookup(f), pr = priorLookup(f);
     if (!(r && pr && r.total > 0)) return null;
     const c = path.centroid(f);
-    return /* @__PURE__ */ React.createElement(ShiftArrow, { key: "a" + f.id, x: c[0], y: c[1], sh: r.margin - pr.margin, k: fc.features.length > 120 ? 0.75 : 1, max: fc.features.length > 120 ? 26 : 40 });
+    return /* @__PURE__ */ React.createElement(ShiftArrow, { key: "a" + f.id, x: c[0], y: c[1], sh: regionShift(r, pr), k: fc.features.length > 120 ? 0.75 : 1, max: fc.features.length > 120 ? 26 : 40 });
   })));
 }
 function DistrictGrid({ races, hover, setHover, onPick, highlightId, view }) {
@@ -1276,7 +1417,7 @@ const drOf = (r) => r.p1 === "D" && r.p2 === "R" ? marginOf(r) : r.p1 === "R" &&
 function projectRaces(list, base24, f) {
   const out = {};
   let sw = 0, wt = 0, nSw = 0;
-  const rows = list.filter((r) => r.level === "Federal" && (r.type === "Senate" || r.type === "House") || r.type === "Governor").map((r) => {
+  const rows = list.filter((r) => r.level === "Federal" || r.level === "Statewide" || r.level === "State Legislative").map((r) => {
     const ex = expectedVote(r, base24, f), rem = remainingOf(r, ex), b = baselineDR(r, base24), dr = drOf(r);
     return { r, ex, rem, b, dr };
   });
@@ -1350,14 +1491,14 @@ function seatRange(list, proj, holdD, holdR, chamberTotal) {
 const kfmtVotes = (n) => n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n / 1e3) + "K" : String(Math.round(n));
 function PowerBar({ power, mapMode, legMode, api, big, seatProj }) {
   const narrow = React.useContext(NarrowCtx), isB = power.isB, seats = power.seats, hold = power.hold || { a: 0, b: 0 }, lead = power.lead, fs = big ? 56 : 44, h = big ? 18 : 14, total = seats || power.total, aTot = power.a + hold.a, bTot = power.b + hold.b, seg = (n) => total ? `${n / total * 100}%` : "0%", majPct = seats ? power.majority / seats * 100 : 50, title = mapMode === "All" ? "All races" : mapMode === "Senate" ? "U.S. Senate" : mapMode === "House" ? "U.S. House" : mapMode === "State Leg" ? legMode === "Both" ? "State legislatures" : legMode === "Senate" ? "State Senates" : "State Houses" : mapMode, needA = seats ? Math.max(0, power.majority - aTot) : null, needB = seats ? Math.max(0, power.majority - bTot) : null, status = power.total === 0 ? api === "loading" ? "loading\u2026" : "no races loaded" : power.states ? `${power.open} split` : seats ? aTot >= power.majority ? "Democrats have a majority" : bTot >= power.majority ? "Republicans have a majority" : `D need ${needA} more \xB7 R need ${needB} more \xB7 ${power.open} open` : power.open ? `${power.open} still open` : "All decided", hatch = "repeating-linear-gradient(45deg,#0002 0 2px,transparent 2px 5px)", aBlock = /* @__PURE__ */ React.createElement("div", { style: { textAlign: "right" } }, /* @__PURE__ */ React.createElement("div", { className: "en-power-num", style: { fontFamily: MONO, fontSize: fs, fontWeight: 700, lineHeight: 1, color: isB ? T.yes : T.demB } }, aTot), /* @__PURE__ */ React.createElement("div", { style: { fontSize: big ? 12 : 11, color: T.text3, marginTop: 2 } }, isB ? "Yes" : power.states ? "Dem both chambers" : "Democrats", hold.a ? /* @__PURE__ */ React.createElement("span", { title: SENATE_HOLDOVERS.note, style: { cursor: "help" } }, " \xB7 ", hold.a, " not up + ", power.a, " won") : seats ? /* @__PURE__ */ React.createElement("span", null, " \xB7 ", power.a, " won") : null)), bBlock = /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { className: "en-power-num", style: { fontFamily: MONO, fontSize: fs, fontWeight: 700, lineHeight: 1, color: isB ? T.no : T.repB } }, bTot), /* @__PURE__ */ React.createElement("div", { style: { fontSize: big ? 12 : 11, color: T.text3, marginTop: 2 } }, isB ? "No" : power.states ? "GOP both chambers" : "Republicans", hold.b ? /* @__PURE__ */ React.createElement("span", { title: SENATE_HOLDOVERS.note, style: { cursor: "help" } }, " \xB7 ", hold.b, " not up + ", power.b, " won") : seats ? /* @__PURE__ */ React.createElement("span", null, " \xB7 ", power.b, " won") : null)), barBlock = /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { height: h, borderRadius: h / 2, overflow: "hidden", display: "flex", background: T.border, position: "relative" } }, hold.a > 0 && /* @__PURE__ */ React.createElement("div", { title: SENATE_HOLDOVERS.note, style: { width: seg(hold.a), background: T.demD, opacity: 0.55 } }), /* @__PURE__ */ React.createElement("div", { style: { width: seg(power.a), background: `linear-gradient(90deg,${isB ? T.yes : T.demD},${isB ? T.yes : T.dem})`, transition: "width .8s" } }), lead && lead.a > 0 && /* @__PURE__ */ React.createElement("div", { title: `${lead.a} leading, still counting`, style: { width: seg(lead.a), background: T.dem + "66", backgroundImage: hatch, transition: "width .8s" } }), /* @__PURE__ */ React.createElement("div", { style: { flex: 1 } }), lead && lead.b > 0 && /* @__PURE__ */ React.createElement("div", { title: `${lead.b} leading, still counting`, style: { width: seg(lead.b), background: T.rep + "66", backgroundImage: hatch, transition: "width .8s" } }), /* @__PURE__ */ React.createElement("div", { style: { width: seg(power.b), background: `linear-gradient(90deg,${isB ? T.no : T.rep},${isB ? T.no : T.repD})`, transition: "width .8s" } }), hold.b > 0 && /* @__PURE__ */ React.createElement("div", { title: SENATE_HOLDOVERS.note, style: { width: seg(hold.b), background: T.repD, opacity: 0.55 } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: `${majPct}%`, top: -3, bottom: -3, width: 2, background: T.text, opacity: 0.5 } }), seats && majPct !== 50 && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: `${100 - majPct}%`, top: -3, bottom: -3, width: 2, background: T.text, opacity: 0.5 } })), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "2px 12px", marginTop: 6, fontSize: big ? 12 : 11, color: T.text3 } }, /* @__PURE__ */ React.createElement("span", null, title, " \xB7 ", seats ? `${seats} seats \xB7 ${power.majority} for control${power.total < power.seatsUp ? ` \xB7 ${power.total} of ${power.seatsUp} on the ballot loaded` : ""}` : `${power.total} ${power.states ? "states" : "contests"}`), /* @__PURE__ */ React.createElement("span", { style: { color: power.states ? T.yes : power.open ? T.amber : T.green } }, status)));
-  return narrow ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 12, padding: big ? "10px 16px 0" : 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12 } }, React.cloneElement(aBlock, { style: { textAlign: "left" } }), React.cloneElement(bBlock, { style: { textAlign: "right" } })), barBlock, (mapMode === "Senate" || mapMode === "House") && /* @__PURE__ */ React.createElement(ProjLine, { sp: seatProj && seatProj[mapMode], meta: seatProj, chamber: mapMode, majority: power.majority })) : /* @__PURE__ */ React.createElement("div", { className: "en-power", style: { display: "grid", gridTemplateColumns: `auto minmax(200px,${big ? 720 : 520}px) auto`, justifyContent: "center", alignItems: "center", gap: big ? 20 : 16, marginBottom: big ? 0 : 12, padding: big ? "10px 40px 0" : 0 } }, aBlock, barBlock, bBlock, (mapMode === "Senate" || mapMode === "House") && /* @__PURE__ */ React.createElement(ProjLine, { sp: seatProj && seatProj[mapMode], meta: seatProj, chamber: mapMode, majority: power.majority }));
+  return narrow ? /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8, marginBottom: 12, padding: big ? "10px 16px 0" : 0 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 12 } }, React.cloneElement(aBlock, { style: { textAlign: "left" } }), React.cloneElement(bBlock, { style: { textAlign: "right" } })), barBlock, (mapMode === "Senate" || mapMode === "House" || mapMode === "Governor") && /* @__PURE__ */ React.createElement(ProjLine, { sp: seatProj && seatProj[mapMode], meta: seatProj, chamber: mapMode, majority: power.majority })) : /* @__PURE__ */ React.createElement("div", { className: "en-power", style: { display: "grid", gridTemplateColumns: `auto minmax(200px,${big ? 720 : 520}px) auto`, justifyContent: "center", alignItems: "center", gap: big ? 20 : 16, marginBottom: big ? 0 : 12, padding: big ? "10px 40px 0" : 0 } }, aBlock, barBlock, bBlock, (mapMode === "Senate" || mapMode === "House" || mapMode === "Governor") && /* @__PURE__ */ React.createElement(ProjLine, { sp: seatProj && seatProj[mapMode], meta: seatProj, chamber: mapMode, majority: power.majority }));
 }
 function ProjLine({ sp, meta, chamber, majority }) {
   var _a, _b;
   if (!sp) return null;
   if (((_a = sp.nVotes) != null ? _a : sp.n) < (sp.n + sp.unprojected) / 2) return /* @__PURE__ */ React.createElement("div", { style: { gridColumn: "1 / -1", textAlign: "center", fontSize: 12, color: T.text3, marginTop: 2 } }, /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: T.goldText, textTransform: "uppercase", marginRight: 8 } }, "Projected range"), "shows up once most seats are counting \xB7 ", (_b = sp.nVotes) != null ? _b : sp.n, " of ", sp.n + sp.unprojected, " have votes so far");
-  const rng = ([a, b]) => a === b ? `${a}` : `${a}\u2013${b}`, ctl = sp.d[0] >= majority ? "Democrats" : sp.r[0] >= majority ? "Republicans" : null, S = meta.S, tip = `Estimate, not a race call. Counted votes are combined with the votes still expected (from 2022 turnout), assuming the rest of each place votes like it did for president in 2024 shifted by tonight's average swing so far (${S >= 0 ? "D" : "R"}+${Math.abs(S).toFixed(1)} across ${meta.n} reporting races). The range covers 8 in 10 simulated outcomes.${sp.unprojected ? ` ${sp.unprojected} race${sp.unprojected === 1 ? "" : "s"} can't be projected yet (no votes and no comparable past result).` : ""}`;
-  return /* @__PURE__ */ React.createElement("div", { title: tip, style: { gridColumn: "1 / -1", textAlign: "center", fontSize: 12, color: T.text2, marginTop: 2, cursor: "help" } }, /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: T.goldText, textTransform: "uppercase", marginRight: 8 } }, "Projected range"), /* @__PURE__ */ React.createElement("b", { style: { color: T.demB } }, "Democrats ", rng(sp.d)), " ", /* @__PURE__ */ React.createElement("span", { style: { color: T.text4 } }, "\xB7"), " ", /* @__PURE__ */ React.createElement("b", { style: { color: T.repB } }, "Republicans ", rng(sp.r)), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, " \xB7 ", ctl ? `${ctl} likely hold ${chamber === "Senate" ? "the Senate" : "the House"}` : "control still uncertain", sp.unprojected ? ` \xB7 ${sp.unprojected} seat${sp.unprojected === 1 ? "" : "s"} too early to project` : "", " \xB7 estimate from votes counted so far \u24D8"));
+  const rng = ([a, b]) => a === b ? `${a}` : `${a}\u2013${b}`, ctl = majority == null ? null : sp.d[0] >= majority ? "Democrats" : sp.r[0] >= majority ? "Republicans" : null, S = meta.S, tip = `Estimate, not a race call. Counted votes are combined with the votes still expected (from 2022 turnout), assuming the rest of each place votes like it did for president in 2024 shifted by tonight's average swing so far (${S >= 0 ? "D" : "R"}+${Math.abs(S).toFixed(1)} across ${meta.n} reporting races). The range covers 8 in 10 simulated outcomes.${sp.unprojected ? ` ${sp.unprojected} race${sp.unprojected === 1 ? "" : "s"} can't be projected yet (no votes and no comparable past result).` : ""}`;
+  return /* @__PURE__ */ React.createElement("div", { title: tip, style: { gridColumn: "1 / -1", textAlign: "center", fontSize: 12, color: T.text2, marginTop: 2, cursor: "help" } }, /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 10, fontWeight: 700, letterSpacing: 1.5, color: T.goldText, textTransform: "uppercase", marginRight: 8 } }, "Projected range"), /* @__PURE__ */ React.createElement("b", { style: { color: T.demB } }, "Democrats ", rng(sp.d)), " ", /* @__PURE__ */ React.createElement("span", { style: { color: T.text4 } }, "\xB7"), " ", /* @__PURE__ */ React.createElement("b", { style: { color: T.repB } }, "Republicans ", rng(sp.r)), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, " \xB7 ", chamber === "Governor" ? `of ${sp.chamberTotal} governor races` : ctl ? `${ctl} likely hold ${chamber === "Senate" ? "the Senate" : "the House"}` : "control still uncertain", sp.unprojected ? ` \xB7 ${sp.unprojected} seat${sp.unprojected === 1 ? "" : "s"} too early to project` : "", " \xB7 estimate from votes counted so far \u24D8"));
 }
 function PollsStrip({ closes, now }) {
   const groups = useMemo(() => {
@@ -1554,7 +1695,7 @@ function HistoryPanel({ race, compact }) {
     };
   }, [race.id]), err) return /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: T.amber, padding: 12 } }, err);
   if (!rows) return /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: T.text3, padding: 12 } }, "Looking up past results\u2026");
-  if (!rows.length) return /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: T.text3, padding: 12 } }, "No past results found for this office on civicAPI.");
+  if (!rows.length) return /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: T.text3, padding: 12 } }, "No past results found for this office.");
   const nowVotes = race.v1 + race.v2, nowProj = race.rpt > 0 && race.rpt < 100 ? Math.round(nowVotes / (race.rpt / 100)) : nowVotes, pts = [...rows].sort((a, b) => a.year - b.year).map((h) => ({ label: String(h.year), votes: h.race.v1 + h.race.v2, margin: signedMargin(h.race), proxy: h.proxy, pres: h.presidential, name: h.race.name, race: h.race }));
   pts.push({ label: "Now", votes: nowVotes, proj: nowProj, margin: signedMargin(race), now: !0, rpt: race.rpt, name: race.name, race });
   const maxV = Math.max(...pts.map((p) => p.proj || p.votes)), maxM = Math.max(8, ...pts.map((p) => Math.abs(p.margin))), last = pts[pts.length - 2], W = compact ? 420 : 560, BH = 90, MH = 64, PAD = 36, n = pts.length, slot = (W - PAD * 2) / n, bw = Math.min(56, slot * 0.6), turnoutDelta = last ? (nowProj - last.votes) / last.votes * 100 : null, marginDelta = last && !last.proxy ? pts[pts.length - 1].margin - last.margin : null;
@@ -1592,7 +1733,7 @@ function TopOfTicket({ race }) {
   if (err) return /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: T.amber, padding: 12 } }, err);
   if (!dd || !td) return /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: T.text3, padding: 12 } }, "Matching counties\u2026");
   const rows = dd.regions.filter((r) => r.total > 0).map((r) => {
-    const t = td.byName[normName(r.name)];
+    const t = regionOf(td, r);
     return t ? { name: r.name, w: r.total, dm: r.margin, tm: t.margin, tTotal: t.total, share: t.total ? r.total / t.total : null, rpt: Math.min(r.rpt, t.rpt) } : null;
   }).filter(Boolean);
   if (!rows.length) return /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: T.amber, padding: 12 } }, "Couldn't match this district's counties to the ", top.type, " race.");
@@ -1612,7 +1753,7 @@ class Boundary extends React.Component {
 }
 const MAP_TYPES = ["Senate", "Governor", "House", "State Senate", "State House", "Ballot"];
 function StatePopup({ abbr, races, hist, calledAt, onClose, initialRaceId, initialView, cmpYear, initialMode, closeAt, onTypeChange }) {
-  var _a, _b, _c;
+  var _a;
   const [mapType, setMapType] = useState(null);
   useEffect(() => {
     onTypeChange && onTypeChange(mapType);
@@ -1729,7 +1870,7 @@ function StatePopup({ abbr, races, hist, calledAt, onClose, initialRaceId, initi
   }, [cmpYear]), useEffect(() => {
     view === "swing" && prior === void 0 && loadPrior();
   }, [view, prior, loadPrior]);
-  const hoverRegion = typeof hover == "string" ? (_a = detail == null ? void 0 : detail.byName) == null ? void 0 : _a[normName(hover)] : null, hoverPrior = typeof hover == "string" ? (_c = (_b = prior == null ? void 0 : prior.detail) == null ? void 0 : _b.byName) == null ? void 0 : _c[normName(hover)] : null, hoverDistrict = hover != null && typeof hover != "string" ? races.find((r) => r.id === hover) : null, districtTypesHere = typesHere.filter(isDistrictType), beside = !isDistrictType(mapType) && view !== "history" && besideType && byType[besideType] ? besideType : null, distNum = (r) => parseInt((r.district || r.name).replace(/\D/g, "")) || 0, listRaces = useMemo(() => {
+  const hoverRegion = typeof hover == "string" ? (_a = detail == null ? void 0 : detail.byName) == null ? void 0 : _a[normName(hover)] : null, hoverPrior = typeof hover == "string" ? regionOf(prior && prior.detail, hover) : null, hoverDistrict = hover != null && typeof hover != "string" ? races.find((r) => r.id === hover) : null, districtTypesHere = typesHere.filter(isDistrictType), beside = !isDistrictType(mapType) && view !== "history" && besideType && byType[besideType] ? besideType : null, distNum = (r) => parseInt((r.district || r.name).replace(/\D/g, "")) || 0, listRaces = useMemo(() => {
     let l = typeRaces;
     return status === "open" ? l = l.filter((r) => !isDecided(r)) : status === "called" && (l = l.filter(isDecided)), [...l].sort((a, b) => isDistrictType(mapType) ? distNum(a) - distNum(b) || a.name.localeCompare(b.name) : isDecided(a) - isDecided(b) || Math.abs(marginOf(a)) - Math.abs(marginOf(b)));
   }, [typeRaces, status, mapType]), stateMargin = focusRace ? signedMargin(focusRace) : 0, priorMargin = prior && prior !== "loading" && (prior != null && prior.race) ? signedMargin(prior.race) : null;
@@ -1757,12 +1898,15 @@ function StatePopup({ abbr, races, hist, calledAt, onClose, initialRaceId, initi
       var _a2;
       return (_a2 = document.getElementById(`row-${r.id}`)) == null ? void 0 : _a2.scrollIntoView({ behavior: "smooth", block: "center" });
     }, 50);
-  }, highlightId: open, view }) : featsErr ? /* @__PURE__ */ React.createElement("div", { style: { color: T.amber, fontSize: 12, textAlign: "center", padding: 30 } }, featsErr) : feats ? /* @__PURE__ */ React.createElement("div", { style: beside ? { gridColumn: 1, gridRow: 2, minWidth: 0 } : { width: "100%", display: "contents" } }, /* @__PURE__ */ React.createElement(GeoMap, { feats, results: detail, prior: prior && prior !== "loading" ? prior.detail : null, view, hover, setHover, ballot: (focusRace == null ? void 0 : focusRace.level) === "Ballot Measure" })) : /* @__PURE__ */ React.createElement("div", { style: { color: T.text3, fontSize: 12 } }, "Loading county map\u2026"), beside && /* @__PURE__ */ React.createElement("div", { style: { gridColumn: 2, gridRow: 2, minWidth: 0 } }, /* @__PURE__ */ React.createElement(DistrictGrid, { races: byType[beside], hover, setHover, onPick: (r) => setHover((h) => h === r.id ? null : r.id), highlightId: null, view: view === "swing" ? "swing" : "results" })), view !== "history" && (hoverRegion || hoverDistrict) && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", right: 28, top: 8, background: T.surface, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", minWidth: 220, pointerEvents: "none", boxShadow: "0 8px 24px #0f1a2e26", zIndex: 3 } }, hoverRegion && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 14, fontWeight: 700 } }, hoverRegion.name, hoverRegion.type ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: T.text3, fontWeight: 400 } }, " ", hoverRegion.type) : null), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3, marginBottom: 6 } }, hoverRegion.rpt, "% reporting \xB7 ", fmtNum(hoverRegion.total), " votes"), [[hoverRegion.c1, hoverRegion.a1, hoverRegion.v1, hoverRegion.p1], [hoverRegion.c2, hoverRegion.a2, hoverRegion.v2, hoverRegion.p2]].map(([n, p, v, pt]) => /* @__PURE__ */ React.createElement("div", { key: n, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "2px 0" } }, /* @__PURE__ */ React.createElement(Tag, { party: pt, size: 14 }), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, color: T.text2 } }, n), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO } }, p.toFixed(1), "%"), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, color: T.text3, width: 44, textAlign: "right" } }, fmtNum(v)))), view === "swing" && hoverPrior && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 6, paddingTop: 6, borderTop: `1px solid ${T.border}`, fontSize: 11, color: T.text2 } }, "Last time: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, color: pc(hoverPrior.margin >= 0 ? "D" : "R", !0) } }, hoverPrior.margin >= 0 ? "D" : "R", "+", Math.abs(hoverPrior.margin).toFixed(1)), " \xB7 Shift: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, fontWeight: 700, color: hoverRegion.margin - hoverPrior.margin >= 0 ? T.demB : T.repB } }, hoverRegion.margin - hoverPrior.margin >= 0 ? "D" : "R", "+", Math.abs(hoverRegion.margin - hoverPrior.margin).toFixed(1)))), hoverDistrict && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 14, fontWeight: 700 } }, hoverDistrict.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3, marginBottom: 6 } }, isDecided(hoverDistrict) ? "Decided" : `${hoverDistrict.rpt}% reporting`), [[hoverDistrict.c1, hoverDistrict.a1, hoverDistrict.p1], [hoverDistrict.c2, hoverDistrict.a2, hoverDistrict.p2]].map(([n, p, pt]) => /* @__PURE__ */ React.createElement("div", { key: n, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "2px 0" } }, /* @__PURE__ */ React.createElement(Tag, { party: pt, size: 14 }), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, color: T.text2 } }, n), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO } }, p.toFixed(1), "%"))), hoverDistrict.prior && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 6, paddingTop: 6, borderTop: `1px solid ${T.border}`, fontSize: 11, color: T.text2 } }, "Last time: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, color: pc(leaderOf(hoverDistrict.prior), !0) } }, leaderOf(hoverDistrict.prior), "+", Math.abs(marginOf(hoverDistrict.prior)).toFixed(1)), " \xB7 Shift: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, fontWeight: 700, color: hoverDistrict.shift >= 0 ? T.demB : T.repB } }, hoverDistrict.shift >= 0 ? "D" : "R", "+", Math.abs(hoverDistrict.shift).toFixed(1)))))), /* @__PURE__ */ React.createElement("div", { style: { padding: "10px 20px 14px", borderTop: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 14, fontSize: 11, color: T.text3, flexWrap: "wrap" } }, view === "history" ? /* @__PURE__ */ React.createElement("span", null, "Past generals from civicAPI \xB7 turnout for tonight is projected from % reporting until 100%") : view === "swing" && !isDistrictType(mapType) ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 60, height: 8, borderRadius: 4, background: `linear-gradient(90deg,${T.dem},${T.border2},${T.rep})` } }), "\u2190 shift toward D \xB7 shift toward R \u2192 ", /* @__PURE__ */ React.createElement("span", { style: { color: T.text4 } }, "\xB7 arrows: direction and size of each county's move")), prior === "loading" ? /* @__PURE__ */ React.createElement("span", null, "Finding last result\u2026") : prior === null ? /* @__PURE__ */ React.createElement("span", { style: { color: T.amber } }, linesSince(focusRace) ? "* " + linesInfo(focusRace) + "." : cmpYear === "house24" && focusRace && focusRace.type !== "House" ? '"vs. 2024 House race" applies to U.S. House races \u2014 pick a House seat, or another comparison.' : cmpYear === "pres24" && focusRace && focusRace.type === "House" ? "No 2024 president result for this district (its 2024 votes were only reported as a multi-district county total)." : 'No prior result found for this office \u2014 try "Results" view.') : (prior == null ? void 0 : prior.race) && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto" } }, "vs. ", /* @__PURE__ */ React.createElement("b", { style: { color: T.text } }, prior.race.name, " ", prior.race.electionDate ? new Date(prior.race.electionDate).getFullYear() : ""), " (", priorMargin >= 0 ? "D" : "R", "+", Math.abs(priorMargin).toFixed(1), prior.race.v1 + prior.race.v2 > 0 ? /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, ": ", rawVs(focusRace, prior.race), prior.race.est ? " \xB7 district split estimated" : "") : null, ")", focusRace && focusRace.v1 + focusRace.v2 > 0 ? /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 now ", stateMargin >= 0 ? "D" : "R", "+", Math.abs(stateMargin).toFixed(1), " \xB7 statewide shift ", /* @__PURE__ */ React.createElement("b", { style: { color: stateMargin - priorMargin >= 0 ? T.demB : T.repB } }, stateMargin - priorMargin >= 0 ? "D" : "R", "+", Math.abs(stateMargin - priorMargin).toFixed(1))) : /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 shift shows once votes are counted"))) : isDistrictType(mapType) && view === "swing" ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 60, height: 8, borderRadius: 4, background: `linear-gradient(90deg,${T.rep},${T.bg},${T.dem})` } }), "more R than last time \u2190 \u2192 more D"), (() => {
-    var _a2, _b2, _c2;
+  }, highlightId: open, view }) : featsErr ? /* @__PURE__ */ React.createElement("div", { style: { color: T.amber, fontSize: 12, textAlign: "center", padding: 30 } }, featsErr) : feats ? /* @__PURE__ */ React.createElement("div", { style: beside ? { gridColumn: 1, gridRow: 2, minWidth: 0 } : { width: "100%", display: "contents" } }, /* @__PURE__ */ React.createElement(GeoMap, { feats, results: detail, prior: prior && prior !== "loading" ? prior.detail : null, view, hover, setHover, ballot: (focusRace == null ? void 0 : focusRace.level) === "Ballot Measure" })) : /* @__PURE__ */ React.createElement("div", { style: { color: T.text3, fontSize: 12 } }, "Loading county map\u2026"), beside && /* @__PURE__ */ React.createElement("div", { style: { gridColumn: 2, gridRow: 2, minWidth: 0 } }, /* @__PURE__ */ React.createElement(DistrictGrid, { races: byType[beside], hover, setHover, onPick: (r) => setHover((h) => h === r.id ? null : r.id), highlightId: null, view: view === "swing" ? "swing" : "results" })), view !== "history" && (hoverRegion || hoverDistrict) && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", right: 28, top: 8, background: T.surface, border: `1px solid ${T.border2}`, borderRadius: 8, padding: "10px 12px", minWidth: 220, pointerEvents: "none", boxShadow: "0 8px 24px #0f1a2e26", zIndex: 3 } }, hoverRegion && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 14, fontWeight: 700 } }, hoverRegion.name, hoverRegion.type ? /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: T.text3, fontWeight: 400 } }, " ", hoverRegion.type) : null), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3, marginBottom: 6 } }, hoverRegion.rpt, "% reporting \xB7 ", fmtNum(hoverRegion.total), " votes"), [[hoverRegion.c1, hoverRegion.a1, hoverRegion.v1, hoverRegion.p1], [hoverRegion.c2, hoverRegion.a2, hoverRegion.v2, hoverRegion.p2]].map(([n, p, v, pt]) => /* @__PURE__ */ React.createElement("div", { key: n, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "2px 0" } }, /* @__PURE__ */ React.createElement(Tag, { party: pt, size: 14 }), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, color: T.text2 } }, n), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO } }, p.toFixed(1), "%"), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, color: T.text3, width: 44, textAlign: "right" } }, fmtNum(v)))), view === "swing" && hoverPrior && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 6, paddingTop: 6, borderTop: `1px solid ${T.border}`, fontSize: 11, color: T.text2 } }, "Last time: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, color: pc(drPair(hoverPrior) ? hoverPrior.margin >= 0 ? "D" : "R" : hoverPrior.p1, !0) } }, regionLead(hoverPrior)), (() => {
+    const sh = regionShift(hoverRegion, hoverPrior);
+    return sh == null ? null : /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 Shift: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, fontWeight: 700, color: sh >= 0 ? T.demB : T.repB } }, sh >= 0 ? "D" : "R", "+", Math.abs(sh).toFixed(1)));
+  })())), hoverDistrict && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 14, fontWeight: 700 } }, hoverDistrict.name), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3, marginBottom: 6 } }, isDecided(hoverDistrict) ? "Decided" : `${hoverDistrict.rpt}% reporting`), [[hoverDistrict.c1, hoverDistrict.a1, hoverDistrict.p1], [hoverDistrict.c2, hoverDistrict.a2, hoverDistrict.p2]].map(([n, p, pt]) => /* @__PURE__ */ React.createElement("div", { key: n, style: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, padding: "2px 0" } }, /* @__PURE__ */ React.createElement(Tag, { party: pt, size: 14 }), /* @__PURE__ */ React.createElement("span", { style: { flex: 1, color: T.text2 } }, n), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO } }, p.toFixed(1), "%"))), hoverDistrict.prior && /* @__PURE__ */ React.createElement("div", { style: { marginTop: 6, paddingTop: 6, borderTop: `1px solid ${T.border}`, fontSize: 11, color: T.text2 } }, "Last time: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, color: pc(leaderOf(hoverDistrict.prior), !0) } }, leaderOf(hoverDistrict.prior), "+", Math.abs(marginOf(hoverDistrict.prior)).toFixed(1)), " \xB7 Shift: ", /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, fontWeight: 700, color: hoverDistrict.shift >= 0 ? T.demB : T.repB } }, hoverDistrict.shift >= 0 ? "D" : "R", "+", Math.abs(hoverDistrict.shift).toFixed(1)))))), /* @__PURE__ */ React.createElement("div", { style: { padding: "10px 20px 14px", borderTop: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 14, fontSize: 11, color: T.text3, flexWrap: "wrap" } }, view === "history" ? /* @__PURE__ */ React.createElement("span", null, "Past generals: official returns for 2022 and 2024 (MIT Election Lab), civicAPI for earlier years \xB7 turnout for tonight is projected from % reporting until 100%") : view === "swing" && !isDistrictType(mapType) ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 60, height: 8, borderRadius: 4, background: `linear-gradient(90deg,${T.dem},${T.border2},${T.rep})` } }), "\u2190 shift toward D \xB7 shift toward R \u2192 ", /* @__PURE__ */ React.createElement("span", { style: { color: T.text4 } }, "\xB7 arrows: direction and size of each county's move")), prior === "loading" ? /* @__PURE__ */ React.createElement("span", null, "Finding last result\u2026") : prior === null ? /* @__PURE__ */ React.createElement("span", { style: { color: T.amber } }, linesSince(focusRace) ? "* " + linesInfo(focusRace) + "." : cmpYear === "house24" && focusRace && focusRace.type !== "House" ? '"vs. 2024 House race" applies to U.S. House races \u2014 pick a House seat, or another comparison.' : cmpYear === "pres24" && focusRace && focusRace.type === "House" ? "No 2024 president result for this district (its 2024 votes were only reported as a multi-district county total)." : 'No prior result found for this office \u2014 try "Results" view.') : (prior == null ? void 0 : prior.race) && /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto" } }, "vs. ", /* @__PURE__ */ React.createElement("b", { style: { color: T.text } }, prior.race.name, " ", prior.race.electionDate ? new Date(prior.race.electionDate).getFullYear() : ""), prior.race.otherSeat ? " (the state's other Senate seat \u2014 this one was last up in 2020)" : "", " (", drPair(prior.race) ? `${priorMargin >= 0 ? "D" : "R"}+${Math.abs(priorMargin).toFixed(1)}` : `${prior.race.p1}+${Math.abs(prior.race.a1 - prior.race.a2).toFixed(1)}`, prior.race.v1 + prior.race.v2 > 0 ? /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, ": ", rawVs(focusRace, prior.race), prior.race.est ? " \xB7 district split estimated" : "") : null, ")", focusRace && focusRace.v1 + focusRace.v2 > 0 ? shiftOf(focusRace, prior.race) == null ? /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 different matchup than tonight, so no shift") : /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 now ", stateMargin >= 0 ? "D" : "R", "+", Math.abs(stateMargin).toFixed(1), " \xB7 statewide shift ", /* @__PURE__ */ React.createElement("b", { style: { color: stateMargin - priorMargin >= 0 ? T.demB : T.repB } }, stateMargin - priorMargin >= 0 ? "D" : "R", "+", Math.abs(stateMargin - priorMargin).toFixed(1))) : /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 shift shows once votes are counted"))) : isDistrictType(mapType) && view === "swing" ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { display: "flex", alignItems: "center", gap: 6 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 60, height: 8, borderRadius: 4, background: `linear-gradient(90deg,${T.rep},${T.bg},${T.dem})` } }), "more R than last time \u2190 \u2192 more D"), (() => {
+    var _a2, _b, _c;
     const wr = typeRaces.filter((r) => r.shift != null && r.a1 + r.a2 > 0);
     if (!wr.length) {
       const withPrior = typeRaces.filter((r) => r.prior).length, anyVotes = typeRaces.some((r) => r.v1 + r.v2 > 0);
-      return /* @__PURE__ */ React.createElement("span", { style: { color: anyVotes || !withPrior ? T.amber : T.text3 } }, !anyVotes && withPrior ? `${withPrior} of ${typeRaces.length} seat${typeRaces.length === 1 ? "" : "s"} have a ${typeRaces[0] && ((_b2 = (_a2 = typeRaces.find((r) => r.prior)) == null ? void 0 : _a2.prior) == null ? void 0 : _b2.name) || "prior"} ${new Date(((_c2 = (typeRaces.find((r) => r.prior) || {}).prior) == null ? void 0 : _c2.electionDate) || Date.now()).getFullYear()} baseline \xB7 shifts show once votes are counted` : "No prior results matched yet for these seats.");
+      return /* @__PURE__ */ React.createElement("span", { style: { color: anyVotes || !withPrior ? T.amber : T.text3 } }, !anyVotes && withPrior ? `${withPrior} of ${typeRaces.length} seat${typeRaces.length === 1 ? "" : "s"} have a ${typeRaces[0] && ((_b = (_a2 = typeRaces.find((r) => r.prior)) == null ? void 0 : _a2.prior) == null ? void 0 : _b.name) || "prior"} ${new Date(((_c = (typeRaces.find((r) => r.prior) || {}).prior) == null ? void 0 : _c.electionDate) || Date.now()).getFullYear()} baseline \xB7 shifts show once votes are counted` : "No prior results matched yet for these seats.");
     }
     const W = wr.reduce((s, r) => s + r.v1 + r.v2, 0) || 1, sh = wr.reduce((s, r) => s + r.shift * (r.v1 + r.v2), 0) / W, fl = wr.filter((r) => isDecided(r) && r.prior && leaderOf(r) !== leaderOf(r.prior));
     return /* @__PURE__ */ React.createElement("span", { style: { marginLeft: "auto" } }, wr.length, " of ", typeRaces.length, " seat", typeRaces.length === 1 ? "" : "s", " matched \xB7 chamber shift ", /* @__PURE__ */ React.createElement("b", { style: { color: sh >= 0 ? T.demB : T.repB } }, sh >= 0 ? "D" : "R", "+", Math.abs(sh).toFixed(1)), fl.length ? /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 ", fl.length, " flip", fl.length > 1 ? "s" : "") : null);
@@ -1770,10 +1914,9 @@ function StatePopup({ abbr, races, hist, calledAt, onClose, initialRaceId, initi
     const o = open === r.id ? null : r.id;
     setOpen(o), o && !isDistrictType(mapType) && setFocusId(r.id);
   }, calledAt: calledAt[r.id], compact: !0 })) : /* @__PURE__ */ React.createElement("div", { style: { padding: 40, textAlign: "center", color: T.text3, fontSize: 13 } }, "Nothing here.")), !isDistrictType(mapType) && detail && !detail.noVotes && /* @__PURE__ */ React.createElement("div", { style: { borderTop: `1px solid ${T.border}`, flex: "1 1 220px", minHeight: 160, overflowY: "auto" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "8px 18px", fontSize: 11, color: T.text3, position: "sticky", top: 0, background: T.card, display: "grid", gridTemplateColumns: view === "swing" ? "1fr 64px 64px 56px 48px" : "1fr 70px 60px 60px", gap: 8 } }, /* @__PURE__ */ React.createElement("span", null, "County"), /* @__PURE__ */ React.createElement("span", { style: { textAlign: "right" } }, "Margin"), view === "swing" && /* @__PURE__ */ React.createElement("span", { style: { textAlign: "right" } }, "Shift"), /* @__PURE__ */ React.createElement("span", { style: { textAlign: "right" } }, "Votes"), /* @__PURE__ */ React.createElement("span", { style: { textAlign: "right" } }, "In")), [...detail.regions].sort((a, b) => b.total - a.total).map((r) => /* @__PURE__ */ React.createElement("div", { key: r.key, onMouseEnter: () => setHover(r.name), onMouseLeave: () => setHover(null), style: { padding: "5px 18px", display: "grid", gridTemplateColumns: view === "swing" ? "1fr 64px 64px 56px 48px" : "1fr 70px 60px 60px", gap: 8, fontSize: 12, background: hover === r.name ? T.hover : "transparent", borderBottom: `1px solid ${T.border}` } }, /* @__PURE__ */ React.createElement("span", { style: { color: T.text2 } }, r.name), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, textAlign: "right", color: r.total ? (focusRace == null ? void 0 : focusRace.level) === "Ballot Measure" ? r.margin >= 0 ? T.yes : T.no : pc(drPair(r) ? r.margin >= 0 ? "D" : "R" : r.p1, !0) : T.text4 } }, r.total ? (focusRace == null ? void 0 : focusRace.level) === "Ballot Measure" ? `${r.margin >= 0 ? "Yes" : "No"}+${Math.abs(r.margin).toFixed(1)}` : regionLead(r) : "\u2014"), view === "swing" && (() => {
-    var _a2;
-    const pr = prior && prior !== "loading" && prior.detail ? (_a2 = prior.detail.byName) == null ? void 0 : _a2[normName(r.name)] : null, d = pr && r.total ? r.margin - pr.margin : null;
+    const pr = prior && prior !== "loading" && prior.detail ? regionOf(prior.detail, r) : null, d = regionShift(r, pr);
     return /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, textAlign: "right", color: d == null ? T.text4 : d >= 0 ? T.demB : T.repB } }, d == null ? "\u2014" : `${d >= 0 ? "D" : "R"}+${Math.abs(d).toFixed(1)}`);
-  })(), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, textAlign: "right", color: T.text3 } }, fmtNum(r.total)), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, textAlign: "right", color: r.rpt >= 100 ? T.green : T.amber } }, r.rpt, "%")))))), /* @__PURE__ */ React.createElement("div", { style: { padding: "7px 22px", borderTop: `1px solid ${T.border}`, fontSize: 11, color: T.text3, display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", null, "Esc or click outside to close"), /* @__PURE__ */ React.createElement("span", null, "County boundaries: US Census via us-atlas \xB7 results: civicAPI"))));
+  })(), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, textAlign: "right", color: T.text3 } }, fmtNum(r.total)), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, textAlign: "right", color: r.rpt >= 100 ? T.green : T.amber } }, r.rpt, "%")))))), /* @__PURE__ */ React.createElement("div", { style: { padding: "7px 22px", borderTop: `1px solid ${T.border}`, fontSize: 11, color: T.text3, display: "flex", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("span", null, "Esc or click outside to close"), /* @__PURE__ */ React.createElement("span", null, "County boundaries: US Census via us-atlas \xB7 tonight: civicAPI \xB7 past results: MIT Election Lab official returns", prior && prior !== "loading" && prior.race && prior.race.source === "civicapi" ? " (this comparison: civicAPI)" : prior && prior !== "loading" && prior.race && prior.race.src === "oe" ? " (2020 Senate: OpenElections certified results)" : ""))));
 }
 const EV_BASE = "https://civicapi.org/api/v2/early-vote", EV_LABELS = { total_early: "Total early vote", returned: "Mail ballots returned", in_person: "Voted in person", "in-person": "Voted in person", inperson: "Voted in person", requested: "Mail ballots requested", cast: "Ballots cast", mail: "Mail ballots", total: "Total early vote" }, EV_ORDER = ["total_early", "total", "cast", "returned", "in_person", "in-person", "mail", "requested"], EV_DEFAULT_CATS = ["requested", "returned", "in_person", "in-person", "cast", "total"];
 async function evFetch(path) {
@@ -2208,7 +2351,7 @@ function ElectionCommandCenterInner() {
           Object.entries(p.byYear).forEach(([y, r]) => {
             by[y] = { id: r.id, state: r.state, abbr: r.abbr, level: r.level, type: r.type, name: r.name, electionDate: r.electionDate, district: r.district, c1: r.c1, c2: r.c2, p1: r.p1, p2: r.p2, a1: r.a1, a2: r.a2, v1: r.v1, v2: r.v2, rpt: r.rpt, rptRaw: r.rptRaw, called: r.called, others: [] };
           }), slim[id] = { byYear: by };
-        }), lsSet("priors", slim);
+        }), lsSet("priors:official-v1", slim);
       }, 5e3), () => clearTimeout(priorsSaveT.current);
   }, [priors]), useEffect(() => {
     if (!mapFull) return;
@@ -2317,7 +2460,7 @@ function ElectionCommandCenterInner() {
       const cached = lsGet(`races:${sq.toLowerCase()}`, 1296e5);
       if (cached && cached.length) {
         setRaces(cached), record(cached, fresh), lastQ.current = sq.toLowerCase(), loadedQ.current = sq, setApi("live"), apiRef.current = "live", wasLive = !0, setApiMsg(`${cached.length.toLocaleString()} races for "${sq}" (from last visit \u2014 refreshing\u2026)`);
-        const cp = lsGet("priors", 168 * 36e5);
+        const cp = lsGet("priors:official-v1", 168 * 36e5);
         if (cp) {
           const keep = {};
           cached.forEach((r) => {
@@ -2470,7 +2613,10 @@ function ElectionCommandCenterInner() {
   }, [all, base24, fy, anyVotes]), seatProj = useMemo(() => {
     if (!est || est.proj.S == null) return null;
     const sen = all.filter((r) => r.level === "Federal" && r.type === "Senate"), hou = all.filter((r) => r.level === "Federal" && r.type === "House");
-    return { Senate: seatRange(sen, est.proj, SENATE_HOLDOVERS.D, SENATE_HOLDOVERS.R, 100), House: seatRange(hou, est.proj, 0, 0, 435), S: est.proj.S, n: est.proj.nSw };
+    return { Senate: seatRange(sen, est.proj, SENATE_HOLDOVERS.D, SENATE_HOLDOVERS.R, 100), House: seatRange(hou, est.proj, 0, 0, 435), Governor: (() => {
+      const g = all.filter((r) => r.type === "Governor");
+      return seatRange(g, est.proj, 0, 0, g.length);
+    })(), S: est.proj.S, n: est.proj.nSw };
   }, [est, all]), power = useMemo(() => {
     const isB = mapMode === "Ballot";
     if (effMode === "State Leg:Both") {
@@ -2768,7 +2914,7 @@ function ElectionCommandCenterInner() {
       return;
     }
     Notification.requestPermission().then((p) => setNotify(p === "granted")).catch(() => setNotify(!1));
-  } }), "Desktop alerts", typeof Notification != "undefined" && Notification.permission === "denied" ? " (blocked in browser)" : ""), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: T.text3 } }, "Data: ", /* @__PURE__ */ React.createElement("a", { href: "https://civicapi.org", target: "_blank", rel: "noreferrer", style: { color: T.goldText, textDecoration: "none", fontWeight: 600 } }, "civicAPI"), (cmpYear === "pres24" || cmpYear === "house24" || base24) && /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 2024 districts: ", /* @__PURE__ */ React.createElement("a", { href: "https://github.com/MEDSL/2024-elections-official", target: "_blank", rel: "noreferrer", style: { color: T.goldText, textDecoration: "none", fontWeight: 600 } }, "MIT Election Lab"), ", WA Secretary of State, King County Elections"), (cmpYear === "pres24" || pres24) && /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 2024 pres. baseline: ", /* @__PURE__ */ React.createElement("a", { href: "https://github.com/tonmcg/US_County_Level_Election_Results_08-24", target: "_blank", rel: "noreferrer", style: { color: T.goldText, textDecoration: "none", fontWeight: 600 } }, "county results (tonmcg)")), pres24Err && /* @__PURE__ */ React.createElement("span", { style: { color: T.amber } }, " \xB7 2024 baseline didn't load \u2014 try again"))), /* @__PURE__ */ React.createElement(Ticker, { items: tickerItems }), /* @__PURE__ */ React.createElement(PollsStrip, { closes: pollsClose, now: nowTick }), /* @__PURE__ */ React.createElement("div", { className: "en-tabs", style: { display: "flex", alignItems: "center", borderBottom: `1px solid ${T.border}`, padding: "0 24px" } }, [["results", "Results"], ["early", "Early vote"], ...showPoll ? [["accuracy", "Poll results"]] : []].map(([k, l]) => /* @__PURE__ */ React.createElement("button", { key: k, onClick: () => {
+  } }), "Desktop alerts", typeof Notification != "undefined" && Notification.permission === "denied" ? " (blocked in browser)" : ""), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: T.text3 } }, "Data: ", /* @__PURE__ */ React.createElement("a", { href: "https://civicapi.org", target: "_blank", rel: "noreferrer", style: { color: T.goldText, textDecoration: "none", fontWeight: 600 } }, "civicAPI"), " \xB7 past results: ", /* @__PURE__ */ React.createElement("a", { href: "https://github.com/MEDSL", target: "_blank", rel: "noreferrer", style: { color: T.goldText, textDecoration: "none", fontWeight: 600 } }, "MIT Election Lab"), " official returns", (cmpYear === "pres24" || cmpYear === "house24" || base24) && /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 2024 districts: ", /* @__PURE__ */ React.createElement("a", { href: "https://github.com/MEDSL/2024-elections-official", target: "_blank", rel: "noreferrer", style: { color: T.goldText, textDecoration: "none", fontWeight: 600 } }, "MIT Election Lab"), ", WA Secretary of State, King County Elections"), (cmpYear === "pres24" || pres24) && /* @__PURE__ */ React.createElement(React.Fragment, null, " \xB7 2024 pres. baseline: ", /* @__PURE__ */ React.createElement("a", { href: "https://github.com/tonmcg/US_County_Level_Election_Results_08-24", target: "_blank", rel: "noreferrer", style: { color: T.goldText, textDecoration: "none", fontWeight: 600 } }, "county results (tonmcg)")), pres24Err && /* @__PURE__ */ React.createElement("span", { style: { color: T.amber } }, " \xB7 2024 baseline didn't load \u2014 try again"))), /* @__PURE__ */ React.createElement(Ticker, { items: tickerItems }), /* @__PURE__ */ React.createElement(PollsStrip, { closes: pollsClose, now: nowTick }), /* @__PURE__ */ React.createElement("div", { className: "en-tabs", style: { display: "flex", alignItems: "center", borderBottom: `1px solid ${T.border}`, padding: "0 24px" } }, [["results", "Results"], ["early", "Early vote"], ...showPoll ? [["accuracy", "Poll results"]] : []].map(([k, l]) => /* @__PURE__ */ React.createElement("button", { key: k, onClick: () => {
     setTab(k), setOpen(null);
   }, style: { fontFamily: SANS, fontSize: 13, fontWeight: tab === k ? 600 : 450, padding: "12px 0", marginRight: 24, border: "none", borderBottom: `3px solid ${tab === k ? T.gold : "transparent"}`, background: "transparent", color: tab === k ? T.text : T.text2, cursor: "pointer" } }, l, k === "accuracy" && acc.polled ? /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, fontSize: 10, color: T.text3, marginLeft: 6 } }, acc.polled) : null)), tab === "accuracy" && /* @__PURE__ */ React.createElement("div", { style: { marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 } }, /* @__PURE__ */ React.createElement("button", { onClick: () => openReport(all, acc, unmatchedPoll, query), disabled: !acc.polled, title: "Written poll-accuracy report in a new tab \u2014 print or save as PDF", style: { fontFamily: SANS, fontSize: 12, fontWeight: 600, padding: "6px 12px", borderRadius: 6, border: `1px solid ${T.gold}`, background: "transparent", color: T.goldText, cursor: acc.polled ? "pointer" : "default", opacity: acc.polled ? 1 : 0.5 } }, "\u{1F4C4} Generate report"), /* @__PURE__ */ React.createElement("button", { onClick: () => exportComparisons(all, acc, query), disabled: !all.length, title: "Excel workbook: summary, every polled race vs. its result, and all loaded races", style: { fontFamily: SANS, fontSize: 12, fontWeight: 600, padding: "6px 12px", borderRadius: 6, border: `1px solid ${T.border2}`, background: "transparent", color: T.text2, cursor: all.length ? "pointer" : "default", opacity: all.length ? 1 : 0.5 } }, "\u2B07 Download comparisons"), pollFile ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: T.green }, title: "Drag a new file onto the page to replace it" }, "\u2713 ", pollFile, " \xB7 ", pollRows.length, " polled races"), /* @__PURE__ */ React.createElement("button", { onClick: () => {
     setPollCSV(null), setPollFile(null);
