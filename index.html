@@ -138,7 +138,10 @@ function raceKeyOf(r) {
   const d = r.district ? String(parseInt(r.district, 10) || r.district) : null;
   return { office: r.type === "State Assembly" || r.type === "House of Delegates" ? "State House" : r.type, district: d };
 }
-const CIVIC = "https://civicapi.org/api/v2", SENATE_HOLDOVERS = { D: 34, R: 31, note: "Seats not up in 2026: 32 Democrats + 2 independents who caucus with them \xB7 31 Republicans (verified Oct 22, 2026 \u2014 270toWin, Ballotpedia)" }, CHAMBER = { Senate: { total: 100, majority: 51 }, House: { total: 435, majority: 218 } }, CALL_TYPES = [["Senate", "U.S. Senate"], ["House", "U.S. House"], ["Governor", "Governor"], ["Statewide", "Other statewide"], ["State Legislative", "State leg."], ["Ballot Measure", "Ballot"], ["Local", "Local"]], callTypeOf = (r) => r.level === "Federal" && r.type === "Senate" ? "Senate" : r.level === "Federal" && r.type === "House" ? "House" : r.type === "Governor" ? "Governor" : r.level === "Statewide" ? "Statewide" : r.level === "State Legislative" ? "State Legislative" : r.level === "Ballot Measure" ? "Ballot Measure" : r.level === "Local" ? "Local" : "Other", CALL_TYPES_DEFAULT = ["Senate", "House", "Governor", "Statewide", "State Legislative", "Ballot Measure"], HASH_MODES = { senate: "Senate", governor: "Governor", house: "House", statesenate: "State Leg:Senate", statehouse: "State Leg:House", stateleg: "State Leg:Both", ballot: "Ballot", all: "All" }, modeToHash = (m) => Object.keys(HASH_MODES).find((k) => HASH_MODES[k] === m) || "", typeToHash = (t) => t === "Senate" ? "senate" : t === "Governor" ? "governor" : t === "House" ? "house" : t === "State Senate" ? "statesenate" : t === "State House" || t === "State Assembly" ? "statehouse" : t === "Ballot" ? "ballot" : "";
+const CIVIC = "https://civicapi.org/api/v2", SENATE_HOLDOVERS = { D: 34, R: 31, note: "Seats not up in 2026: 32 Democrats + 2 independents who caucus with them \xB7 31 Republicans (verified Oct 22, 2026 \u2014 270toWin, Ballotpedia)" }, CHAMBER = { Senate: { total: 100, majority: 51 }, House: { total: 435, majority: 218 } }, POLLS_CLOSE_2026 = (() => {
+  const t = (h, m = 0) => new Date(Date.UTC(2026, 10, 3, h + 5, m)).toISOString();
+  return Object.fromEntries(Object.entries({ AL: [20], AK: [24, 25], AZ: [21], AR: [20.5], CA: [23], CO: [21], CT: [20], DE: [20], DC: [20], FL: [19, 20], GA: [19], HI: [24], ID: [22, 23], IL: [20], IN: [18, 19], IA: [21], KS: [20, 21], KY: [18, 19], LA: [21], ME: [20], MD: [20], MA: [20], MI: [20, 21], MN: [21], MS: [20], MO: [20], MT: [22], NE: [21], NV: [22], NH: [20], NJ: [20], NM: [21], NY: [21], NC: [19.5], ND: [20, 21], OH: [19.5], OK: [20], OR: [22, 23], PA: [20], RI: [20], SC: [19], SD: [20, 21], TN: [20], TX: [20, 21], UT: [22], VT: [19], VA: [19], WA: [23], WV: [19.5], WI: [21], WY: [21] }).map(([ab, hs]) => [ab, hs.map((h) => t(Math.floor(h), Math.round(h % 1 * 60)))]));
+})(), CALL_TYPES = [["Senate", "U.S. Senate"], ["House", "U.S. House"], ["Governor", "Governor"], ["Statewide", "Other statewide"], ["State Legislative", "State leg."], ["Ballot Measure", "Ballot"], ["Local", "Local"]], callTypeOf = (r) => r.level === "Federal" && r.type === "Senate" ? "Senate" : r.level === "Federal" && r.type === "House" ? "House" : r.type === "Governor" ? "Governor" : r.level === "Statewide" ? "Statewide" : r.level === "State Legislative" ? "State Legislative" : r.level === "Ballot Measure" ? "Ballot Measure" : r.level === "Local" ? "Local" : "Other", CALL_TYPES_DEFAULT = ["Senate", "House", "Governor", "Statewide", "State Legislative", "Ballot Measure"], HASH_MODES = { senate: "Senate", governor: "Governor", house: "House", statesenate: "State Leg:Senate", statehouse: "State Leg:House", stateleg: "State Leg:Both", ballot: "Ballot", all: "All" }, modeToHash = (m) => Object.keys(HASH_MODES).find((k) => HASH_MODES[k] === m) || "", typeToHash = (t) => t === "Senate" ? "senate" : t === "Governor" ? "governor" : t === "House" ? "house" : t === "State Senate" ? "statesenate" : t === "State House" || t === "State Assembly" ? "statehouse" : t === "Ballot" ? "ballot" : "";
 function parseHash(h) {
   const parts = (h || "").replace(/^#\/?/, "").split("/").map((x) => x.trim().toLowerCase()).filter(Boolean);
   if (!parts.length) return null;
@@ -536,6 +539,47 @@ function presPrior(by, abbr) {
 }
 const BASE24_URL = "base-2024.json";
 let base24P = null;
+const racesFileP = {};
+function loadRacesYear(y) {
+  return racesFileP[y] || (racesFileP[y] = fetch(`races-${y}.json?v=2`).then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+  }).catch((e) => {
+    throw racesFileP[y] = null, e;
+  })), racesFileP[y];
+}
+const FULL_CHAMBER_SD = /* @__PURE__ */ new Set(["AZ", "CT", "GA", "ID", "ME", "MA", "NH", "NY", "NC", "RI", "SD", "VT"]), NO_EVEN_YEAR_LEG = /* @__PURE__ */ new Set(["LA", "MS", "NJ", "VA"]), LEG_NOT_UP = { 2024: /* @__PURE__ */ new Set(["AL|SD", "AL|HD", "MD|SD", "MD|HD", "MI|SD"]), 2022: /* @__PURE__ */ new Set() }, STATEWIDE_OFFICE = (t) => ({ Senate: "US SENATE", Governor: "GOVERNOR", "Lieutenant Governor": "LIEUTENANT GOVERNOR", "Attorney General": "ATTORNEY GENERAL", "Secretary of State": "SECRETARY OF STATE" })[t] || String(t || "").toUpperCase(), legNum = (r) => {
+  const m = String(r.district || "").replace(new RegExp("^" + r.abbr + "[-\\s]*", "i"), "").replace(/^(HD|SD|AD|LD)[-\s#]*/i, "").match(/^0*(\d+)[A-Z]?$/i) || String(r.name || "").match(/(\d+)\s*$/);
+  return m ? String(+m[1]) : null;
+};
+function fileResult(file, race, yr) {
+  const st = file && file[race.abbr];
+  if (!st) return { why: "not on file" };
+  let rec = null, kind = null, key = null;
+  if (race.type === "House" ? (kind = "CD", key = cdOf(race), rec = key && st.CD && st.CD[key]) : race.type === "State Senate" || race.type === "State House" ? (kind = race.type === "State Senate" ? "SD" : "HD", key = legNum(race), rec = key && st[kind] && st[kind][key]) : (kind = "S", key = STATEWIDE_OFFICE(race.type), rec = st.S && st.S[key]), rec && rec.c && rec.c.length && rec.T > 0) {
+    const [a, b] = rec.c, T2 = rec.T, pc2 = (p) => p === "?" ? "I" : p;
+    return { race: {
+      id: `f${yr}-${race.abbr}-${kind}-${key}`,
+      abbr: race.abbr,
+      state: race.state,
+      type: race.type,
+      name: race.name,
+      level: race.level,
+      electionDate: `${yr}-11-0${yr === 2022 ? 8 : 5}T12:00:00.000Z`,
+      c1: a[0],
+      p1: pc2(a[1]),
+      v1: a[2],
+      a1: 100 * a[2] / T2,
+      c2: b ? b[0] : "\u2014",
+      p2: b ? pc2(b[1]) : "?",
+      v2: b ? b[2] : 0,
+      a2: b ? 100 * b[2] / T2 : 0,
+      others: [],
+      src: "mit"
+    } };
+  }
+  return kind === "S" ? { why: key === "US SENATE" || key === "GOVERNOR" && Object.keys(st.S || {}).length ? "no race" : "not on file" } : kind === "CD" ? { why: "not on file" } : NO_EVEN_YEAR_LEG.has(race.abbr) || LEG_NOT_UP[yr] && LEG_NOT_UP[yr].has(`${race.abbr}|${kind}`) ? { why: "no race" } : Object.keys(st[kind] || {}).length ? { why: (kind === "HD" ? !["AL", "MD"].includes(race.abbr) : FULL_CHAMBER_SD.has(race.abbr)) ? "not on file" : "no race" } : { why: "not on file" };
+}
 function loadBase24() {
   return base24P || (base24P = fetch(BASE24_URL).then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -1463,7 +1507,10 @@ function StatePopup({ abbr, races, hist, calledAt, onClose, initialRaceId, initi
     let l = typeRaces;
     return status === "open" ? l = l.filter((r) => !isDecided(r)) : status === "called" && (l = l.filter(isDecided)), [...l].sort((a, b) => isDistrictType(mapType) ? distNum(a) - distNum(b) || a.name.localeCompare(b.name) : isDecided(a) - isDecided(b) || Math.abs(marginOf(a)) - Math.abs(marginOf(b)));
   }, [typeRaces, status, mapType]), stateMargin = focusRace ? signedMargin(focusRace) : 0, priorMargin = prior && prior !== "loading" && (prior != null && prior.race) ? signedMargin(prior.race) : null;
-  return /* @__PURE__ */ React.createElement("div", { onClick: onClose, className: "en-popup-wrap", style: { position: "fixed", inset: 0, background: "#0f1a2e66", backdropFilter: "blur(6px)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, animation: "fadeIn .15s" } }, /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation(), role: "dialog", "aria-modal": "true", className: "en-popup", style: { width: "min(1320px,100%)", height: "min(94vh,900px)", background: T.card, border: `1px solid ${T.border2}`, borderRadius: 14, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 30px 80px #0f1a2e40", animation: "popIn .2s ease-out" } }, /* @__PURE__ */ React.createElement("div", { className: "en-popup-hdr", style: { padding: "16px 22px 12px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 14 } }, /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, fontSize: 16, fontWeight: 700, background: T.border2, borderRadius: 7, padding: "7px 11px" } }, abbr), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 24, fontWeight: 900, letterSpacing: -0.3 } }, STATE_NAMES[abbr]), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: T.text3 } }, races.length, " races \xB7 ", /* @__PURE__ */ React.createElement("span", { style: { color: T.green }, title: races.some((r) => r.v1 + r.v2 > 0) ? void 0 : "Before any votes are counted, the only settled races are the uncontested ones" }, races.filter(isDecided).length, " ", races.some((r) => r.v1 + r.v2 > 0) ? "decided" : "uncontested"), " \xB7 ", /* @__PURE__ */ React.createElement("span", { style: { color: T.amber } }, races.filter((r) => !isDecided(r)).length, " open"), closeAt ? /* @__PURE__ */ React.createElement("span", { title: `${fmtLocal(closeAt)} your time` }, " \xB7 polls ", new Date(closeAt).getTime() <= Date.now() ? "closed" : "close", " ", fmtET(closeAt)) : null)), /* @__PURE__ */ React.createElement("div", { className: "en-popup-pills", style: { display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" } }, typesHere.map((t) => /* @__PURE__ */ React.createElement(Pill, { key: t, active: mapType === t, onClick: () => {
+  return /* @__PURE__ */ React.createElement("div", { onClick: onClose, className: "en-popup-wrap", style: { position: "fixed", inset: 0, background: "#0f1a2e66", backdropFilter: "blur(6px)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 20, animation: "fadeIn .15s" } }, /* @__PURE__ */ React.createElement("div", { onClick: (e) => e.stopPropagation(), role: "dialog", "aria-modal": "true", className: "en-popup", style: { width: "min(1320px,100%)", height: "min(94vh,900px)", background: T.card, border: `1px solid ${T.border2}`, borderRadius: 14, display: "flex", flexDirection: "column", overflow: "hidden", boxShadow: "0 30px 80px #0f1a2e40", animation: "popIn .2s ease-out" } }, /* @__PURE__ */ React.createElement("div", { className: "en-popup-hdr", style: { padding: "16px 22px 12px", borderBottom: `1px solid ${T.border}`, display: "flex", alignItems: "center", gap: 14 } }, /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, fontSize: 16, fontWeight: 700, background: T.border2, borderRadius: 7, padding: "7px 11px" } }, abbr), /* @__PURE__ */ React.createElement("div", { style: { flex: 1, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 24, fontWeight: 900, letterSpacing: -0.3 } }, STATE_NAMES[abbr]), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: T.text3 } }, races.length, " races \xB7 ", /* @__PURE__ */ React.createElement("span", { style: { color: T.green }, title: races.some((r) => r.v1 + r.v2 > 0) ? void 0 : "Before any votes are counted, the only settled races are the uncontested ones" }, races.filter(isDecided).length, " ", races.some((r) => r.v1 + r.v2 > 0) ? "decided" : "uncontested"), " \xB7 ", /* @__PURE__ */ React.createElement("span", { style: { color: T.amber } }, races.filter((r) => !isDecided(r)).length, " open"), closeAt ? (() => {
+    const last = (POLLS_CLOSE_2026[abbr] || [])[1], lastDone = last && new Date(last).getTime() <= Date.now(), firstDone = new Date(closeAt).getTime() <= Date.now();
+    return /* @__PURE__ */ React.createElement("span", { title: `${fmtLocal(closeAt)} your time${last ? ` \xB7 last polls ${fmtLocal(last)}` : ""} \xB7 source: 270toWin` }, " \xB7 polls ", firstDone && (!last || lastDone) ? "closed" : "close", " ", fmtET(closeAt), last ? /* @__PURE__ */ React.createElement(React.Fragment, null, " (last ", fmtET(last).replace(" ET", ""), " ET)") : null);
+  })() : null)), /* @__PURE__ */ React.createElement("div", { className: "en-popup-pills", style: { display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "flex-end" } }, typesHere.map((t) => /* @__PURE__ */ React.createElement(Pill, { key: t, active: mapType === t, onClick: () => {
     setMapType(t), setFocusId(null), setHover(null), setView((v) => v === "history" || t === "Ballot" && v === "swing" ? "results" : v);
   }, count: byType[t].length }, typeLabel(t)))), /* @__PURE__ */ React.createElement("button", { onClick: onClose, "aria-label": "Close", style: { width: 36, height: 36, borderRadius: 18, border: `1px solid ${T.border2}`, background: T.surface, color: T.text2, fontSize: 18, cursor: "pointer", flexShrink: 0 } }, "\xD7")), /* @__PURE__ */ React.createElement("div", { className: "en-popup-body", style: { flex: 1, display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(360px,1fr)", minHeight: 0 } }, /* @__PURE__ */ React.createElement("div", { className: "en-popup-map", style: { borderRight: `1px solid ${T.border}`, display: "flex", flexDirection: "column", minHeight: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 20px 8px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" } }, isDistrictType(mapType) ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SERIF, fontSize: 16, fontWeight: 700 } }, typeLabel(mapType), " districts"), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: T.text3 } }, typeRaces.length, " seat", typeRaces.length === 1 ? "" : "s", " \xB7 click a seat for its race"), /* @__PURE__ */ React.createElement("div", { style: { marginLeft: "auto", display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement(Pill, { active: view === "results", onClick: () => setView("results") }, "Results"), mapType !== "Ballot" && /* @__PURE__ */ React.createElement(Pill, { active: view === "swing", onClick: () => setView("swing") }, "vs. last time"), /* @__PURE__ */ React.createElement(Pill, { active: view === "history", onClick: () => setView("history") }, "History", open ? "" : " (pick a seat)"))) : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SERIF, fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, focusRace ? focusRace.name : mapType, /* @__PURE__ */ React.createElement(NewLinesMark, { r: focusRace }), view === "history" ? " \u2014 past generals" : " by county"), /* @__PURE__ */ React.createElement("div", { style: { marginLeft: "auto", display: "flex", gap: 4 } }, /* @__PURE__ */ React.createElement(Pill, { active: view === "results", onClick: () => setView("results") }, "Results"), mapType !== "Ballot" && /* @__PURE__ */ React.createElement(Pill, { active: view === "swing", onClick: () => setView("swing") }, "vs. last time"), /* @__PURE__ */ React.createElement(Pill, { active: view === "history", onClick: () => setView("history") }, "History")))), !isDistrictType(mapType) && typeRaces.length > 1 && /* @__PURE__ */ React.createElement("div", { style: { padding: "0 20px 8px", display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: T.text3, marginRight: 2 } }, "Show on map:"), typeRaces.length > 4 ? /* @__PURE__ */ React.createElement("select", { "aria-label": "Race to show on the map", value: focusRace ? String(focusRace.id) : "", onChange: (e) => {
     const id = e.target.value, r = typeRaces.find((x) => String(x.id) === id);
@@ -1796,7 +1843,7 @@ function EarlyVote({ feats, refreshSec, initialSel, onSelChange }) {
     return /* @__PURE__ */ React.createElement("div", { key: y, title: h ? `${h.total.toLocaleString()} ballots \xB7 ${h.note}` : "no verified final figure on file", style: { padding: "8px 0", borderTop: `1px solid ${T.border}`, fontFamily: MONO, textAlign: "right", fontWeight: 700, color: sh == null ? T.text4 : sh >= 0 ? T.demB : T.repB } }, h ? `${evHistText(h) || fmtNum(h.total)}${h.flag ? "*" : ""}` : "\u2014");
   }))))) : /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: T.text3 } }, "No states reporting yet."), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3, marginTop: 12, lineHeight: 1.5 } }, `Source: civicAPI Early Vote Tracker, built from state election-office reports. "D vs R" is the margin among ballots with a Dem or Rep registration only \u2014 a D+40 state can still be close on election night once unaffiliated voters and Election Day turnout are counted. Reporting order and what each state counts as "early" vary; use this for direction and pace, not as a result. "2024 final" / "2022 final" are each state\\'s last pre-election early-vote tally by party (hover for the count and caveat; * = last available snapshot, not fully final); only states with a verified official figure are filled in.`)))) : /* @__PURE__ */ React.createElement("div", { style: { padding: "24px" } }, /* @__PURE__ */ React.createElement("div", { style: { ...card, textAlign: "center", color: T.text3, fontSize: 13, padding: "60px 20px" } }, err || "No early-vote data available.", /* @__PURE__ */ React.createElement("div", { style: { marginTop: 14 } }, /* @__PURE__ */ React.createElement("button", { onClick: refresh, style: { fontFamily: SANS, fontSize: 12, fontWeight: 600, padding: "6px 14px", borderRadius: 6, border: `1px solid ${T.border2}`, background: "#fff", color: T.text2, cursor: "pointer" } }, "Try again"))));
 }
-const ELECTION_DAY = /* @__PURE__ */ new Date("2026-11-04T00:00:00Z"), DOOM_TARGETS = {
+const ELECTION_DAY = /* @__PURE__ */ new Date("2026-11-03T23:00:00Z"), DOOM_TARGETS = {
   open: { at: Date.parse("2026-11-03T06:00:00-05:00"), label: "6:00 AM ET", line: "The doors open. The lines form. It begins." },
   close: { at: Date.parse("2026-11-03T19:00:00-05:00"), label: "7:00 PM ET", line: "435 seats. 35 Senate races. 36 governors. One night." }
 };
@@ -1940,8 +1987,19 @@ function ElectionCommandCenterInner() {
   }, [mapFull, stateSel]), useEffect(() => {
     loadStates().then(setUsFeats).catch(() => setMapStyle("tiles"));
   }, []);
-  const [pollCSV, setPollCSV] = useState(null), [pollFile, setPollFile] = useState(null), pollRef = useRef(null), [pollErr, setPollErr] = useState(null), [showPaste, setShowPaste] = useState(!1), [pasteTxt, setPasteTxt] = useState("");
+  const [pollCSV, setPollCSV] = useState(null), [pollFile, setPollFile] = useState(null), pollRef = useRef(null), [pollErr, setPollErr] = useState(null), [showPaste, setShowPaste] = useState(!1), [pasteTxt, setPasteTxt] = useState(""), [racesYr, setRacesYr] = useState({});
   useEffect(() => {
+    if (!pollCSV) return;
+    let on = !0;
+    return [2022, 2024].forEach((y) => {
+      racesYr[y] || loadRacesYear(y).then((d) => {
+        on && setRacesYr((o) => ({ ...o, [y]: d }));
+      }).catch(() => {
+      });
+    }), () => {
+      on = !1;
+    };
+  }, [pollCSV]), useEffect(() => {
     if (!pollCSV) return;
     let on = !0;
     return pres24 || loadPres24().then((d) => {
@@ -2105,27 +2163,10 @@ function ElectionCommandCenterInner() {
   }, [load]), useEffect(() => {
     if (!races.length) return;
     const date = (races.find((r) => r.electionDate) || {}).electionDate;
-    if (!date) return;
-    const day = date.slice(0, 10), cached = lsGet(`pollsclose:${day}`, 3 * 36e5), byState = {};
-    races.forEach((r) => {
-      if (r.electionDate.slice(0, 10) !== day) return;
-      const cur = byState[r.abbr];
-      (!cur || tier(r) < tier(cur)) && (byState[r.abbr] = r);
-    });
-    const todo = Object.entries(byState).filter(([ab]) => pollsCloseRef.current[ab] === void 0);
-    if (!todo.length) return;
-    let alive = !0;
-    return (async () => (await pmap(todo, async ([ab, r]) => {
-      try {
-        const d = await fetchDetail(r.id);
-        if (!alive) return;
-        pollsCloseRef.current = { ...pollsCloseRef.current, [ab]: d.pollsClose || null };
-      } catch {
-      }
-    }, 4), alive && (setPollsClose({ ...pollsCloseRef.current }), lsSet(`pollsclose:${day}`, pollsCloseRef.current))))(), () => {
-      alive = !1;
-    };
-  }, [races]), useEffect(() => {
+    if (!date || date.slice(0, 10) !== "2026-11-03") return;
+    const pc2 = Object.fromEntries(Object.entries(POLLS_CLOSE_2026).map(([ab, [first]]) => [ab, first]));
+    pollsCloseRef.current = pc2, setPollsClose(pc2);
+  }, [races.length]), useEffect(() => {
     if (api !== "live" && api !== "stale") return;
     const iv = setInterval(() => loadRef.current(void 0, { silent: !0 }), refreshSec * 1e3);
     return () => clearInterval(iv);
@@ -2306,26 +2347,42 @@ function ElectionCommandCenterInner() {
     };
   }, [stateSel, closeState]);
   const cmpOf = (race, yr) => {
-    if (!race || race.level === "Ballot Measure") return null;
-    let r = null, label = "";
+    if (!race) return null;
+    if (race.level === "Ballot Measure") return { why: "n/a", label: "Ballot measures have no earlier race to compare" };
+    let r = null, label = "", miss = null;
     if (linesSince(race) > yr) return { why: "new lines", label: linesInfo(race) };
-    if (yr === 2024)
+    const fromFile = () => {
+      const f = racesYr[yr];
+      return f ? fileResult(f, race, yr) : { why: "loading" };
+    };
+    if (yr === 2024 && (race.type === "House" || presEligible(race)))
       if (race.type === "House") {
-        const d = base24 && districtPrior(base24, race, "pres");
-        r = d && d.race, label = "Trump\u2013Harris 2024 in this district";
-      } else if (presEligible(race)) {
+        if (!base24) return { why: "loading", label: "Loading 2024 results\u2026" };
+        const d = districtPrior(base24, race, "pres");
+        r = d && d.race, label = "Trump\u2013Harris 2024 in this district", r || (miss = "not on file");
+      } else {
         const bp = base24 && base24[race.abbr] && base24[race.abbr].pres;
         if (bp) r = mkPrior({ abbr: race.abbr, name: "President", type: "President", dName: "Kamala Harris", rName: "Donald Trump", D: bp[0], R: bp[1], T: bp[2], id: `p24-${race.abbr}` });
         else {
           const d = pres24 && presPrior(pres24, race.abbr);
           r = d && d.race;
         }
-        label = "Trump\u2013Harris 2024 statewide";
-      } else
-        r = pickPrior(priors[race.id], 2024), label = r ? `2024 race for this seat: ${r.c1} vs ${r.c2}` : "";
-    else
-      r = pickPrior(priors[race.id], 2022), label = r ? `2022 ${typeLabel(r.type)}: ${r.c1} vs ${r.c2}` : "";
-    if (!r || !(r.v1 + r.v2 > 0 || r.a1 + r.a2 > 0)) return null;
+        if (label = "Trump\u2013Harris 2024 statewide", !r) return { why: "loading", label: "Loading 2024 results\u2026" };
+      }
+    else {
+      const x = fromFile();
+      if (x && x.race)
+        r = x.race, label = `${yr} ${typeLabel(race.type)}: ${r.c1} vs ${r.c2} \xB7 official results (MIT Election Lab)`;
+      else {
+        const c = pickPrior(priors[race.id], yr);
+        c ? (r = c, label = `${yr} ${typeLabel(c.type)}: ${c.c1} vs ${c.c2} \xB7 civicAPI`) : miss = x ? x.why : "not on file";
+      }
+    }
+    if (!r || !(r.v1 + r.v2 > 0 || r.a1 + r.a2 > 0)) {
+      const w = miss || "not on file";
+      return { why: w, label: w === "no race" ? `No ${typeLabel(race.type)} race for this seat in ${yr}` : w === "loading" ? `Loading ${yr} results\u2026` : `No ${yr} result on file for this seat (the official returns may leave out uncontested races)` };
+    }
+    if (!(r.v2 > 0 || r.a2 > 0)) return { r, label: label + " \xB7 unopposed", dr: null, unopp: !0 };
     const dr = r.p1 === "D" && r.p2 === "R" || r.p1 === "R" && r.p2 === "D" ? signedMargin(r) : null;
     return { r, label, dr };
   }, pollTable = useMemo(() => {
@@ -2343,10 +2400,10 @@ function ElectionCommandCenterInner() {
         const q = p.raceName.toLowerCase().trim();
         race = q && (pool.find((r) => r.name.toLowerCase() === q || (r.type || "").toLowerCase() === q) || pool.find((r) => r.name.toLowerCase().includes(q))) || null;
       }
-      const s1 = race ? candShare(race, p.n1) : null, s2 = race ? candShare(race, p.n2) : null, status2 = race ? !p.n1 || !p.n2 || s1 && s2 ? "matched" : "names" : "missing", counted = race && race.v1 + race.v2 > 0, pm = (p.poll1 || 0) - (p.poll2 || 0), am = counted && s1 && s2 ? s1.pct - s2.pct : null, pdr = p.pp1 === "D" && p.pp2 === "R" ? pm : p.pp1 === "R" && p.pp2 === "D" ? -pm : null;
-      return { i, p, race, status: status2, s1, s2, pm, am, err: am == null ? null : am - pm, pdr, c24: cmpOf(race, 2024), c22: cmpOf(race, 2022) };
+      const s1 = race ? candShare(race, p.n1) : null, s2 = race ? candShare(race, p.n2) : null, status2 = race ? !p.n1 || !p.n2 || s1 && s2 ? "matched" : "names" : "missing", counted = race && race.v1 + race.v2 > 0, pm = (p.poll1 || 0) - (p.poll2 || 0), am = counted && s1 && s2 ? s1.pct - s2.pct : null, k = p.key, pseudo = !race && p.abbr && k && k.office ? { abbr: p.abbr, state: STATE_NAMES[p.abbr] || p.abbr, type: k.office, district: k.district || "", name: p.raceName, level: k.office === "House" || k.office === "Senate" ? "Federal" : k.office === "Ballot" ? "Ballot Measure" : /State (Senate|House)/.test(k.office) ? "State Legislative" : "Statewide", id: `poll-${i}` } : null, pdr = p.pp1 === "D" && p.pp2 === "R" ? pm : p.pp1 === "R" && p.pp2 === "D" ? -pm : null;
+      return { i, p, race, status: status2, s1, s2, pm, am, err: am == null ? null : am - pm, pdr, c24: cmpOf(race || pseudo, 2024), c22: cmpOf(race || pseudo, 2022) };
     });
-  }, [pollRows, races, priors, pres24, base24]), pollCmp = useMemo(() => {
+  }, [pollRows, races, priors, pres24, base24, racesYr]), pollCmp = useMemo(() => {
     const out = {};
     return [["c24", "2024"], ["c22", "2022"]].forEach(([k, y]) => {
       const xs = pollTable.filter((x) => x.pdr != null && x[k] && x[k].r && x[k].dr != null);
@@ -2455,7 +2512,7 @@ function ElectionCommandCenterInner() {
     return pollSort === "status" ? { missing: 0, names: 1, matched: 2 }[a.status] - { missing: 0, names: 1, matched: 2 }[b.status] || a.p.abbr.localeCompare(b.p.abbr) : pollSort === "close" ? Math.abs(a.pm) - Math.abs(b.pm) : pollSort === "err" ? Math.abs((_a = b.err) != null ? _a : -1) - Math.abs((_b = a.err) != null ? _b : -1) : a.p.abbr.localeCompare(b.p.abbr) || a.i - b.i;
   }).map((x) => {
     const { p, race } = x, pc1 = pc(p.pp1 === "Y" ? "Y" : p.pp1, !0), pc2 = pc(p.pp2 === "N" ? "N" : p.pp2, !0), last = (n) => (n || "").split(/\s+/).pop(), mFmt = (m) => m == null ? "\u2014" : `${m >= 0 ? last(p.n1) : last(p.n2)} +${Math.abs(m).toFixed(1)}`, rc1 = x.s1 && x.s1.party && x.s1.party !== "?" ? pc(x.s1.party, !0) : pc1, rc2 = x.s2 && x.s2.party && x.s2.party !== "?" ? pc(x.s2.party, !0) : pc2, mCol = (m, c1, c2) => m == null || m === 0 ? T.text3 : m > 0 ? c1 : c2;
-    return /* @__PURE__ */ React.createElement("tr", { key: x.i, style: { borderBottom: `1px solid ${T.border}`, cursor: race ? "pointer" : "default" }, onClick: () => race && openState(race.abbr, race.id), title: race ? `Open ${race.state} \xB7 ${race.name}` : "civicAPI has no race for this row" }, /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", fontFamily: MONO, fontWeight: 700 } }, p.abbr || p.state), /* @__PURE__ */ React.createElement("td", { ...mtip(race), style: { padding: "7px 10px", whiteSpace: "nowrap" } }, p.raceName, /* @__PURE__ */ React.createElement(NewLinesMark, { r: race || (p.key && p.key.office === "House" ? { type: "House", abbr: p.abbr } : null) }), p.poll_date ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: T.text4 } }, p.poll_date) : null), /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", whiteSpace: "nowrap" } }, /* @__PURE__ */ React.createElement("span", { style: { color: pc1, fontWeight: 600 } }, last(p.n1), " ", p.poll1), " ", /* @__PURE__ */ React.createElement("span", { style: { color: T.text4 } }, "\xB7"), " ", /* @__PURE__ */ React.createElement("span", { style: { color: pc2, fontWeight: 600 } }, last(p.n2), " ", p.poll2)), /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", fontFamily: MONO, fontWeight: 700, whiteSpace: "nowrap", color: mCol(x.pm, pc1, pc2) } }, mFmt(x.pm)), /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", whiteSpace: "nowrap", color: x.am == null ? T.text4 : T.text } }, x.am == null ? "\u2014" : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { color: rc1, fontWeight: 600 } }, last(p.n1), " ", x.s1.pct.toFixed(1)), " ", /* @__PURE__ */ React.createElement("span", { style: { color: T.text4 } }, "\xB7"), " ", /* @__PURE__ */ React.createElement("span", { style: { color: rc2, fontWeight: 600 } }, last(p.n2), " ", x.s2.pct.toFixed(1)))), /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", fontFamily: MONO, fontWeight: 700, whiteSpace: "nowrap", color: mCol(x.am, rc1, rc2) } }, mFmt(x.am)), [x.c24, x.c22].map((c, k) => /* @__PURE__ */ React.createElement("td", { key: k, title: c ? c.label : "No earlier result for this race", style: { padding: "7px 10px", fontFamily: MONO, whiteSpace: "nowrap", color: !c || !c.r ? T.text4 : pc(c.r.p1, !0) } }, c ? c.r ? `${c.r.p1 === "?" ? last(c.r.c1) : c.r.p1}+${Math.abs(marginOf(c.r)).toFixed(1)}` : /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 10 } }, c.why) : "\u2014")), /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", fontFamily: MONO, whiteSpace: "nowrap", color: x.err == null ? T.text4 : Math.abs(x.err) <= 3 ? T.green : Math.abs(x.err) <= 6 ? T.amber : T.no } }, x.err == null ? "\u2014" : `${Math.abs(x.err).toFixed(1)}`), /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", fontFamily: MONO, color: T.text3 } }, race && race.v1 + race.v2 > 0 ? `${race.rpt}%` : "\u2014", race && isDecided(race) ? /* @__PURE__ */ React.createElement("span", { style: { color: T.green } }, " \u2713") : null), /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", whiteSpace: "nowrap", fontSize: 11, color: x.status === "matched" ? T.green : x.status === "names" ? T.amber : T.no }, title: x.status === "names" ? `civicAPI candidates: ${[race.c1, race.c2, ...race.xc || []].join(", ")}` : void 0 }, x.status === "matched" ? "\u25CF matched" : x.status === "names" ? "\u25CF name differs" : "\u25CF not in civicAPI"));
+    return /* @__PURE__ */ React.createElement("tr", { key: x.i, style: { borderBottom: `1px solid ${T.border}`, cursor: race ? "pointer" : "default" }, onClick: () => race && openState(race.abbr, race.id), title: race ? `Open ${race.state} \xB7 ${race.name}` : "civicAPI has no race for this row" }, /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", fontFamily: MONO, fontWeight: 700 } }, p.abbr || p.state), /* @__PURE__ */ React.createElement("td", { ...mtip(race), style: { padding: "7px 10px", whiteSpace: "nowrap" } }, p.raceName, /* @__PURE__ */ React.createElement(NewLinesMark, { r: race || (p.key && p.key.office === "House" ? { type: "House", abbr: p.abbr } : null) }), p.poll_date ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 10, color: T.text4 } }, p.poll_date) : null), /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", whiteSpace: "nowrap" } }, /* @__PURE__ */ React.createElement("span", { style: { color: pc1, fontWeight: 600 } }, last(p.n1), " ", p.poll1), " ", /* @__PURE__ */ React.createElement("span", { style: { color: T.text4 } }, "\xB7"), " ", /* @__PURE__ */ React.createElement("span", { style: { color: pc2, fontWeight: 600 } }, last(p.n2), " ", p.poll2)), /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", fontFamily: MONO, fontWeight: 700, whiteSpace: "nowrap", color: mCol(x.pm, pc1, pc2) } }, mFmt(x.pm)), /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", whiteSpace: "nowrap", color: x.am == null ? T.text4 : T.text } }, x.am == null ? "\u2014" : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { color: rc1, fontWeight: 600 } }, last(p.n1), " ", x.s1.pct.toFixed(1)), " ", /* @__PURE__ */ React.createElement("span", { style: { color: T.text4 } }, "\xB7"), " ", /* @__PURE__ */ React.createElement("span", { style: { color: rc2, fontWeight: 600 } }, last(p.n2), " ", x.s2.pct.toFixed(1)))), /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", fontFamily: MONO, fontWeight: 700, whiteSpace: "nowrap", color: mCol(x.am, rc1, rc2) } }, mFmt(x.am)), [x.c24, x.c22].map((c, k) => /* @__PURE__ */ React.createElement("td", { key: k, title: c ? c.label : "No comparison available", style: { padding: "7px 10px", fontFamily: MONO, whiteSpace: "nowrap", color: !c || !c.r ? T.text4 : pc(c.r.p1, !0) } }, c ? c.r ? c.unopp ? /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 10 } }, c.r.p1, " unopposed") : `${c.r.p1 === "?" ? last(c.r.c1) : c.r.p1}+${Math.abs(marginOf(c.r)).toFixed(1)}` : /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 10 } }, c.why === "no race" ? `no race in '${String(k === 0 ? 2024 : 2022).slice(2)}` : c.why === "loading" ? "\u2026" : c.why) : /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 10 } }, "n/a"))), /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", fontFamily: MONO, whiteSpace: "nowrap", color: x.err == null ? T.text4 : Math.abs(x.err) <= 3 ? T.green : Math.abs(x.err) <= 6 ? T.amber : T.no } }, x.err == null ? "\u2014" : `${Math.abs(x.err).toFixed(1)}`), /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", fontFamily: MONO, color: T.text3 } }, race && race.v1 + race.v2 > 0 ? `${race.rpt}%` : "\u2014", race && isDecided(race) ? /* @__PURE__ */ React.createElement("span", { style: { color: T.green } }, " \u2713") : null), /* @__PURE__ */ React.createElement("td", { style: { padding: "7px 10px", whiteSpace: "nowrap", fontSize: 11, color: x.status === "matched" ? T.green : x.status === "names" ? T.amber : T.no }, title: x.status === "names" ? `civicAPI candidates: ${[race.c1, race.c2, ...race.xc || []].join(", ")}` : void 0 }, x.status === "matched" ? "\u25CF matched" : x.status === "names" ? "\u25CF name differs" : "\u25CF not in civicAPI"));
   }))))), acc.rows.length > 0 && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "28px 28px 24px", display: "flex", flexDirection: "column", justifyContent: "space-between" } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: T.text2, marginBottom: 6 } }, acc.rows.length, " of ", acc.polled, " polled races scored"), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "baseline", gap: 10 } }, /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SERIF, fontSize: 92, fontWeight: 900, lineHeight: 0.95, letterSpacing: -3, color: errColor(acc.avg) } }, acc.avg.toFixed(1)), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SERIF, fontSize: 26, color: T.text2 } }, "pt")), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 19, fontWeight: 600, marginTop: 6 } }, "average margin error"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: T.text2, marginTop: 8, lineHeight: 1.5, maxWidth: 420 } }, acc.dir != null ? /* @__PURE__ */ React.createElement(React.Fragment, null, "Winner right in ", /* @__PURE__ */ React.createElement("b", { style: { color: T.text } }, acc.dir.toFixed(0), "%"), " of the ", acc.finals.length, " decided race", acc.finals.length === 1 ? "" : "s", acc.counting ? ` (${acc.counting} still counting)` : "", ", ") : /* @__PURE__ */ React.createElement(React.Fragment, null, acc.counting, " race", acc.counting === 1 ? "" : "s", " still counting \u2014 no winners yet; "), "landed within 2 points ", /* @__PURE__ */ React.createElement("b", { style: { color: T.text } }, acc.w2.toFixed(0), "%"), " of the time, and within 3 points ", /* @__PURE__ */ React.createElement("b", { style: { color: T.text } }, acc.w3.toFixed(0), "%"), ".", acc.bias == null ? null : Math.abs(acc.bias) >= 0.5 ? /* @__PURE__ */ React.createElement(React.Fragment, null, " Results ran ", /* @__PURE__ */ React.createElement("b", { style: { color: acc.bias > 0 ? T.demB : T.repB } }, Math.abs(acc.bias).toFixed(1), " points more ", acc.bias > 0 ? "Democratic" : "Republican"), " than our final numbers on average (D-vs-R races).") : /* @__PURE__ */ React.createElement(React.Fragment, null, " No meaningful partisan bias in our numbers."))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginTop: 22, paddingTop: 18, borderTop: `1px solid ${T.border}` } }, /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3 } }, "Best call"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 17, fontWeight: 700, color: T.green } }, acc.best.race.state, " ", acc.best.race.name, /* @__PURE__ */ React.createElement(NewLinesMark, { r: acc.best.race })), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: MONO, fontSize: 11, color: T.text3 } }, acc.best.err.toFixed(1), " pt off \xB7 polled ", acc.best.pm >= 0 ? acc.best.race.p1 : acc.best.race.p2, "+", Math.abs(acc.best.pm).toFixed(1), ", result ", acc.best.am >= 0 ? acc.best.race.p1 : acc.best.race.p2, "+", Math.abs(acc.best.am).toFixed(1))), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3 } }, "Largest miss"), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 17, fontWeight: 700, color: T.red } }, acc.worst.race.state, " ", acc.worst.race.name, /* @__PURE__ */ React.createElement(NewLinesMark, { r: acc.worst.race })), /* @__PURE__ */ React.createElement("div", { style: { fontFamily: MONO, fontSize: 11, color: T.text3 } }, acc.worst.err.toFixed(1), " pt off \xB7 polled ", acc.worst.pm >= 0 ? acc.worst.race.p1 : acc.worst.race.p2, "+", Math.abs(acc.worst.pm).toFixed(1), ", result ", acc.worst.am >= 0 ? acc.worst.race.p1 : acc.worst.race.p2, "+", Math.abs(acc.worst.am).toFixed(1))))), /* @__PURE__ */ React.createElement("div", { style: { background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "18px 18px 10px" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 16, fontWeight: 700 } }, "Poll vs. result"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3 } }, "On the dashed line = perfect \xB7 green band = within 2 pts")), /* @__PURE__ */ React.createElement(Scatter, { rows: acc.rows }))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "minmax(280px,1fr) minmax(0,1.5fr)", gap: 20 } }, /* @__PURE__ */ React.createElement("div", { style: { background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "16px 18px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 16, fontWeight: 700, marginBottom: 12 } }, "By race level"), Object.entries(acc.byLevel).sort((a, b) => b[1].n - a[1].n).map(([lv, s]) => {
     const a = s.sum / s.n, col = errColor(a);
     return /* @__PURE__ */ React.createElement("div", { key: lv, style: { padding: "10px 0", borderBottom: `1px solid ${T.border}` } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 6 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 13, fontWeight: 500 } }, lv), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, fontSize: 12, color: col, fontWeight: 700 } }, a.toFixed(1), " pt")), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", gap: 14, fontSize: 11, color: T.text3 } }, /* @__PURE__ */ React.createElement("span", null, s.n, " race", s.n > 1 ? "s" : ""), /* @__PURE__ */ React.createElement("span", null, (s.dir / s.n * 100).toFixed(0), "% direction")), /* @__PURE__ */ React.createElement("div", { style: { height: 4, background: T.border, borderRadius: 2, marginTop: 6, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { height: "100%", width: `${Math.max(4, 100 - a * 15)}%`, background: col } })));
