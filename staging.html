@@ -578,7 +578,7 @@ function fileResult(file, race, yr) {
       src: "mit"
     } };
   }
-  return kind === "S" ? { why: (key === "US SENATE" || key === "GOVERNOR") && Object.keys(st.S || {}).length ? "no race" : "not on file" } : kind === "CD" ? { why: "not on file" } : NO_EVEN_YEAR_LEG.has(race.abbr) || LEG_NOT_UP[yr] && LEG_NOT_UP[yr].has(`${race.abbr}|${kind}`) ? { why: "no race" } : Object.keys(st[kind] || {}).length ? { why: (kind === "HD" ? !["AL", "MD"].includes(race.abbr) : FULL_CHAMBER_SD.has(race.abbr)) ? "not on file" : "no race" } : { why: "not on file" };
+  return kind === "S" ? { why: key === "US SENATE" || key === "GOVERNOR" && Object.keys(st.S || {}).length ? "no race" : "not on file" } : kind === "CD" ? { why: "not on file" } : NO_EVEN_YEAR_LEG.has(race.abbr) || LEG_NOT_UP[yr] && LEG_NOT_UP[yr].has(`${race.abbr}|${kind}`) ? { why: "no race" } : Object.keys(st[kind] || {}).length ? { why: (kind === "HD" ? !["AL", "MD"].includes(race.abbr) : FULL_CHAMBER_SD.has(race.abbr)) ? "not on file" : "no race" } : { why: "not on file" };
 }
 function loadBase24() {
   return base24P || (base24P = fetch(BASE24_URL).then((r) => {
