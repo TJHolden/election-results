@@ -213,10 +213,10 @@ window.__rh6=(async function(ids,seeds,prior,opts){ opts=opts||{}; NLSTATES=new 
       const sign=(MAIL_EARLY.has(st)?1:-1)*flip; timing[k]={fin,start,bias:(opts.biasScale??1)*(sign*Math.abs(4+3*gauss(rg))+sb*0.3+gauss(rg)*3)}; }); });
     for(const t of [0.15,0.25,0.35,0.5,0.65,0.8,0.9]){
       const tcs=[];
-      const contests=races.map(rc=>{ let cc=0,tt=0; const slim=rc.regs.map(g=>{ const tm=timing[rc.st+'|'+unitKey(g.name)]; const p=t>=tm.fin?1:t<=tm.start?0:(t-tm.start)/(tm.fin-tm.start);
-          const T=g.total||1; const fm=100*(g.D-g.R)/T; const pm=_c(fm+(1-p)*tm.bias,-100,100); const two=(g.D+g.R)/T; const C=T*p; if(rc.keep.has(g.name)){ cc+=C; tt+=g.total; }
+      const contests=races.map(rc=>{ let cc=0,tt=0,ca=0,ta=0; const slim=rc.regs.map(g=>{ const tm=timing[rc.st+'|'+unitKey(g.name)]; const p=t>=tm.fin?1:t<=tm.start?0:(t-tm.start)/(tm.fin-tm.start);
+          const T=g.total||1; const fm=100*(g.D-g.R)/T; const pm=_c(fm+(1-p)*tm.bias,-100,100); const two=(g.D+g.R)/T; const C=T*p; if(rc.keep.has(g.name)){ cc+=C; tt+=g.total; } ca+=C; ta+=g.total;
           return {name:g.name,type:g.type,rpt:p>=1?100:Math.floor(p*100),total:Math.round(C),D:Math.max(0,Math.round(C*(two/2+pm/200))),R:Math.max(0,Math.round(C*(two/2-pm/200)))}; });
-        tcs.push(tt?cc/tt:0); const tot=Math.round(rc.T*(tt?cc/tt:0));
+        if(!tt){ cc=ca; tt=ta; } /* whole-race races: the count moves with all of the race's places */ tcs.push(tt?cc/tt:0); const tot=Math.round(rc.T*(tt?cc/tt:0));
         const fr=tt?cc/tt:0; let rs={...rc.r,rpt:Math.round(100*fr)}; if(true){ /* every race: the whole-race unit (fallback) must see the partial count, not the final */ /* party totals counted so far, with the same early-count lean as the counties */ const lean=rc.regs.reduce((a,g)=>{ const tm=timing[rc.st+'|'+unitKey(g.name)]; const p=t>=tm.fin?1:t<=tm.start?0:(t-tm.start)/(tm.fin-tm.start); return a+(g.total*p)*(1-p)*tm.bias; },0)/Math.max(1,cc);
           const sc=x=>Math.round(x*fr); const Dp=rc.r.p1==="D"?1:0; rs={...rs,v1:sc(rc.r.v1),v2:sc(rc.r.v2),others:rc.r.others.map(o=>({...o,votes:sc(o.votes)}))}; const t2=(rs.v1+rs.v2+rs.others.reduce((a,o)=>a+o.votes,0))||1; const shift=Math.round(t2*lean/200);
           /* move the lean between the biggest D and biggest R entries */ const bump=(p,dv)=>{ if(rs.p1===p){ rs.v1=Math.max(0,rs.v1+dv); return; } if(rs.p2===p){ rs.v2=Math.max(0,rs.v2+dv); return; } const o=rs.others.find(o=>o.party===p); if(o) o.votes=Math.max(0,o.votes+dv); }; bump("D",shift); bump("R",-shift); }
