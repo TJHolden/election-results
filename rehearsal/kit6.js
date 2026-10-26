@@ -200,7 +200,7 @@ window.__rh6=(async function(ids,seeds,prior,opts){ opts=opts||{}; NLSTATES=new 
     if(fx.length) issues.push(tag+': stray counties (count only) '+fx.map(u=>u.n).join(', '));
     if(Math.abs(sumKeep/T-1)>0.03) issues.push(tag+`: county votes ${(100*sumKeep/T).toFixed(1)}% of race total`);
     const twoParty=regs.filter(g=>keep.has(g.name)).reduce((a,g)=>a+(g.D+g.R),0), twoAll=regs.filter(g=>keep.has(g.name)).reduce((a,g)=>a+(g.Dall+g.Rall),0); if(twoAll&&twoParty/twoAll<0.98) issues.push(tag+`: D or R not top-two in some counties (${(100*twoParty/twoAll).toFixed(1)}% of D+R votes seen)`);
-    races.push({id,st,ty,tag,regs,keep,T,final:100*(D-R)/T,r,mp}); });
+    races.push({id,st,ty,tag,regs,keep,T,final:100*(D-R)/T,r,mp,kk:T>0?sumKeep/T:1}); });
   const rows=[];
   for(const seed of seeds) for(const flip of [1,-1]){
     const rg=rngF(seed*7919+(flip>0?1:2)); const timing={};
@@ -219,7 +219,7 @@ window.__rh6=(async function(ids,seeds,prior,opts){ opts=opts||{}; NLSTATES=new 
           const sc=x=>Math.round(x*fr); const Dp=rc.r.p1==="D"?1:0; rs={...rs,v1:sc(rc.r.v1),v2:sc(rc.r.v2),others:rc.r.others.map(o=>({...o,votes:sc(o.votes)}))}; const t2=(rs.v1+rs.v2+rs.others.reduce((a,o)=>a+o.votes,0))||1; const shift=Math.round(t2*lean/200);
           /* move the lean between the biggest D and biggest R entries */ const bump=(p,dv)=>{ if(rs.p1===p){ rs.v1=Math.max(0,rs.v1+dv); return; } if(rs.p2===p){ rs.v2=Math.max(0,rs.v2+dv); return; } const o=rs.others.find(o=>o.party===p); if(o) o.votes=Math.max(0,o.votes+dv); }; bump("D",shift); bump("R",-shift); }
         return {id:rc.id,st:rc.st,units:modelUnits(rs,{regions:slim,total:tot},cf,b24,null,nl)}; });
-      const res=projectNight(contests,{mu:prior},{});
+      const res=projectNight(contests,{mu:prior},opts.params||{}); /* as the page does: measure against the race's own total when the county rows hold a few % more (write-ins) */ res.races.forEach((x,i)=>{ const k=races[i].kk; if(x.m==null||contests[i].units.length===1&&contests[i].units[0].c==="all") return; if(k>0.9&&k<1.1&&Math.abs(k-1)>0.002){ x.m*=k; x.lo*=k; x.hi*=k; } });
       res.races.forEach((x,i)=>{ const rc=races[i]; rows.push(x.m==null?{seed,flip,t,id:rc.id,none:true,tc:tcs[i]}:{seed,flip,t,id:rc.id,ty:rc.ty,final:rc.final,m:x.m,lo:x.lo,hi:x.hi,pD:x.pD,tc:tcs[i],trusted:x.trusted}); });
     } }
   const R=rows.filter(x=>!x.none&&x.tc<0.985&&x.tc>0);
