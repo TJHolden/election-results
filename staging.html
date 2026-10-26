@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Election Night Live Results</title>
-<meta name="build" content="20261026003446">
+<meta name="build" content="20261026005014">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261026003446"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261026005014"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -1625,7 +1625,7 @@ function _mixPost(d, sd, mix) {
 function projectNight(contests, prior, params) {
   const P = { ...PROJ_DEFAULTS, ...params || {} }, mu = prior && isFinite(prior.mu) ? prior.mu : 0, isDone = (u, st) => u.C > 0 && u.rpt >= (PROJ_LATE_MAIL.has(st) ? P.doneRptLate : P.doneRpt), L = [];
   contests.forEach((ct, ci) => ct.units.forEach((u) => {
-    if (u.b != null && u.E > 0 && isDone(u, ct.st)) {
+    if (u.b != null && u.E > 0 && isDone(u, ct.st) && !(u.bErr > 0)) {
       const m = 100 * (u.Dv - u.Rv) / u.C;
       L.push({ ci, st: ct.st, x: _feat(u), y: m - u.b, t: Math.log(u.C / u.E), w: Math.pow(u.E, P.wPow) });
     }
@@ -1680,14 +1680,14 @@ function projectNight(contests, prior, params) {
   });
   const fNat = eAll ? eDone / eAll : 0, natSd = Math.sqrt((P.priorSd * (1 - fNat)) ** 2 + (trusted ? resSd * resSd / Math.max(1, nDone) : P.priorSd * P.priorSd)), out = contests.map((ct, ci) => {
     const stW = (S.stW[ct.st] || 0) / S.wbar, rcW = (S.rcW[ci] || 0) / S.wbar, fSt = stAll[ct.st] ? (stDone[ct.st] || 0) / stAll[ct.st] : 0, stateSd = P.stateSd * (1 - fSt) + P.stateSd * 0.25 * Math.sqrt(P.kState / (P.kState + stW));
-    let dW = 0, dS = 0, dB = 0, dW2 = 0;
+    let dW = 0, dS = 0, dB = 0, dW2 = 0, dE2 = 0;
     const scC = Math.max(1.5, qCounty / qz);
     ct.units.forEach((u) => {
       if (u.fixed || !(u.C > 0) || u.b == null || !(u.E > 0)) return;
       const x = _feat(u), pred = u.b + x.reduce((q, v, i) => q + v * S.beta[i], 0) + (S.st[ct.st] || 0), th = x.reduce((q, v, i) => q + v * Tn.beta[i], 0) + (Tn.st[ct.st] || 0), tot = Math.max(u.C, u.E * Math.exp(th)), pf = isDone(u, ct.st) ? 1 : u.C / tot, w = u.C;
-      dW += w, dW2 += w * w, dS += w * (100 * (u.Dv - u.Rv) / u.C - pred), dB += w * P.partialBias * (1 - pf);
+      dW += w, dW2 += w * w, dE2 += w * w * (u.bErr || 0) ** 2, dS += w * (100 * (u.Dv - u.Rv) / u.C - pred), dB += w * P.partialBias * (1 - pf);
     });
-    const dPost = dW > 0 ? _mixPost(dS / dW, Math.sqrt((dB / dW) ** 2 + scC * scC * dW2 / (dW * dW)), P.raceMix) : _mixPost(0, 1 / 0, P.raceMix), rcHat = dPost.m, raceSd = dPost.sd;
+    const dPost = dW > 0 ? _mixPost(dS / dW, Math.sqrt((dB / dW) ** 2 + (scC * scC * dW2 + dE2) / (dW * dW)), P.raceMix) : _mixPost(0, 1 / 0, P.raceMix), rcHat = dPost.m, raceSd = dPost.sd;
     let cD = 0, cR = 0, cC = 0, remM = 0, remV = 0, remErr = 0, remTurnErr = 0, noBase = 0, unbE = 0, hard = 0;
     const outs = [], kn = ct.units.filter((u) => u.b != null && u.E > 0), kE = kn.reduce((a, u) => a + u.E, 0), avgB = kE ? kn.reduce((a, u) => a + u.b * u.E, 0) / kE : null, avgE = kn.length ? kE / kn.length : null;
     ct.units.forEach((u0) => {
@@ -1700,7 +1700,7 @@ function projectNight(contests, prior, params) {
         }
         u = { ...u, b: u.b == null ? avgB : u.b, E: u.E > 0 ? u.E : avgE, s1: null, s2: null }, noBase += 0.5, unbE += u.E;
       }
-      const x = _feat(u), yh = x.reduce((s, v, i) => s + v * S.beta[i], 0) + (S.st[ct.st] || 0) + rcHat, th = x.reduce((s, v, i) => s + v * Tn.beta[i], 0) + (Tn.st[ct.st] || 0) + (Tn.rc[ci] || 0), tot = Math.max(u.C || 0, u.E * Math.exp(th)), R = Math.max(0, tot - (u.C || 0)), mModel = _clamp(u.b + yh, -100, 100), p = (u.C || 0) / tot, sdM = Math.max(1, qCounty / qz), sdP = p > 0 ? Math.max(P.partialFloor, (1 - p) * P.partialBias) / Math.max(0.05, Math.sqrt(p)) : 1e9, mObs = (u.C || 0) > 0 ? 100 * ((u.Dv || 0) - (u.Rv || 0)) / u.C : 0, wP = p > 0 ? 1 / (sdP * sdP) / (1 / (sdP * sdP) + 1 / (sdM * sdM)) : 0, mf = wP * mObs + (1 - wP) * mModel, sdF = 1 / Math.sqrt(1 / (sdM * sdM) + (p > 0 ? 1 / (sdP * sdP) : 0)), need = tot * mf / 100 - ((u.Dv || 0) - (u.Rv || 0)), rm = _clamp(need, -R, R);
+      const x = _feat(u), yh = x.reduce((s, v, i) => s + v * S.beta[i], 0) + (S.st[ct.st] || 0) + rcHat, th = x.reduce((s, v, i) => s + v * Tn.beta[i], 0) + (Tn.st[ct.st] || 0) + (Tn.rc[ci] || 0), tot = Math.max(u.C || 0, u.E * Math.exp(th)), R = Math.max(0, tot - (u.C || 0)), mModel = _clamp(u.b + yh, -100, 100), p = (u.C || 0) / tot, sdM = Math.sqrt(Math.max(1, qCounty / qz) ** 2 + (u.bErr || 0) ** 2), sdP = p > 0 ? Math.max(P.partialFloor, (1 - p) * P.partialBias) / Math.max(0.05, Math.sqrt(p)) : 1e9, mObs = (u.C || 0) > 0 ? 100 * ((u.Dv || 0) - (u.Rv || 0)) / u.C : 0, wP = p > 0 ? 1 / (sdP * sdP) / (1 / (sdP * sdP) + 1 / (sdM * sdM)) : 0, mf = wP * mObs + (1 - wP) * mModel, sdF = 1 / Math.sqrt(1 / (sdM * sdM) + (p > 0 ? 1 / (sdP * sdP) : 0)), need = tot * mf / 100 - ((u.Dv || 0) - (u.Rv || 0)), rm = _clamp(need, -R, R);
       remM += rm, remV += R, remErr += tot * qz * sdF / 100, remTurnErr += R * (Math.exp(qTurn) - 1), R > 0 && outs.push({ c: u0.c, n: u0.n, R, mf, net: rm });
     });
     const total = cC + remV, unbShare = total > 0 ? unbE / total : 0;
@@ -1756,8 +1756,8 @@ function modelUnits(r, det, cf, base24, fy) {
   const st = r.abbr, F = cf && cf[st] || {}, cd = r.type === "House" ? cdOf(r) : null, piece = cd && cdBase(r, base24), canon = (k) => UNIT_ALIAS[st] && UNIT_ALIAS[st][k] || k, pieceBy = {};
   if (piece && piece.c) {
     const nm = base24[st].n || {};
-    Object.entries(piece.c).forEach(([f, [d, rr, t]]) => {
-      pieceBy[canon(unitKey(nm[f] || f))] = { b: t ? 100 * (d - rr) / t : 0, E: t };
+    Object.entries(piece.c).forEach(([f, [d, rr, t, be]]) => {
+      pieceBy[canon(unitKey(nm[f] || f))] = { b: t ? 100 * (d - rr) / t : 0, E: t, bErr: be || 0 };
     });
   }
   const regs = det && det.regions && det.regions.length && !multiParty(r) ? det.regions : null;
@@ -1769,8 +1769,8 @@ function modelUnits(r, det, cf, base24, fy) {
     }, sets = [regs.filter((g) => !/town|planning|state/i.test(g.type || "")), regs.filter((g) => /planning/i.test(g.type || "")), regs.filter((g) => !/state|planning/i.test(g.type || ""))].filter((a) => a.length), score = (a) => new Set(a.map((g) => look(g.name)).filter((x) => x[1]).map((x) => x[0])).size, use = r.type === "House" ? sets[0] || [] : sets.slice().sort((a, b2) => score(b2) - score(a))[0] || [], house = r.type === "House", atLarge = cd === "AL";
     let units = use.map((g) => {
       const k0 = unitKey(g.name), merged = UNIT_MERGE[st] && UNIT_MERGE[st][k0], [k, f] = look(g.name), pc2 = pieceBy[k] || pieceBy[canon(k0)];
-      let b2 = null, E2 = null;
-      return house ? pc2 ? (b2 = pc2.b, E2 = pc2.E) : f && atLarge && (b2 = f[0], E2 = f[3]) : f && (b2 = f[0], E2 = f[3]), { c: merged || (house && pc2 ? pieceBy[k] ? k : canon(k0) : k), n: g.name, b: b2, s1: f ? f[1] : null, s2: f ? f[2] : null, E: E2, C: g.total || 0, Dv: g.D || 0, Rv: g.R || 0, rpt: g.rpt || 0, merged: !!merged };
+      let b2 = null, E2 = null, bErr = 0;
+      return house ? pc2 ? (b2 = pc2.b, E2 = pc2.E, bErr = pc2.bErr || 0) : f && atLarge && (b2 = f[0], E2 = f[3]) : f && (b2 = f[0], E2 = f[3]), { c: merged || (house && pc2 ? pieceBy[k] ? k : canon(k0) : k), n: g.name, b: b2, ...bErr ? { bErr } : {}, s1: f ? f[1] : null, s2: f ? f[2] : null, E: E2, C: g.total || 0, Dv: g.D || 0, Rv: g.R || 0, rpt: g.rpt || 0, merged: !!merged };
     });
     const by = /* @__PURE__ */ new Map();
     if (units.forEach((u) => {

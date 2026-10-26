@@ -37,12 +37,13 @@ const _ncdf=x=>{ const t=1/(1+0.2316419*Math.abs(x)), d=0.3989423*Math.exp(-x*x/
 function _mixPost(d,sd,mix){ if(!(sd<1e6)) { const v=mix.reduce((a,[w,s])=>a+w*s*s,0); return {m:0,sd:Math.sqrt(v)}; }
   const cs=mix.map(([w,s])=>{ const tv=s*s+sd*sd; const like=w*Math.exp(-d*d/(2*tv))/Math.sqrt(tv); const v=1/(1/(s*s)+1/(sd*sd)); return {like,m:v*d/(sd*sd),v}; });
   const Z=cs.reduce((a,c)=>a+c.like,0)||1; const m=cs.reduce((a,c)=>a+c.like*c.m,0)/Z; const v=cs.reduce((a,c)=>a+c.like*(c.v+c.m*c.m),0)/Z-m*m; return {m,sd:Math.sqrt(Math.max(0,v))}; }
-// contests: [{id, st, units:[{c,b,s1,s2,E, C,Dv,Rv,rpt}], ...}]  prior: {mu} (D-minus-R swing vs baseline, pts)
+// contests: [{id, st, units:[{c,b,s1,s2,E, C,Dv,Rv,rpt, bErr?}], ...}]  bErr: sd (pts) of an estimated baseline (new district lines: a county's
+//   piece of a district is estimated) — such places don't teach the night's swing, and their own predictions carry that extra error  prior: {mu} (D-minus-R swing vs baseline, pts)
 function projectNight(contests,prior,params){
   const P={...PROJ_DEFAULTS,...(params||{})}; const mu=prior&&isFinite(prior.mu)?prior.mu:0;
   const isDone=(u,st)=>u.C>0&&u.rpt>=(PROJ_LATE_MAIL.has(st)?P.doneRptLate:P.doneRpt);
   // 1) learning set: finished counties with a baseline
-  const L=[]; contests.forEach((ct,ci)=>ct.units.forEach(u=>{ if(u.b!=null&&u.E>0&&isDone(u,ct.st)){ const m=100*(u.Dv-u.Rv)/u.C; L.push({ci,st:ct.st,x:_feat(u),y:m-u.b,t:Math.log(u.C/u.E),w:Math.pow(u.E,P.wPow)}); } }));
+  const L=[]; contests.forEach((ct,ci)=>ct.units.forEach(u=>{ if(u.b!=null&&u.E>0&&isDone(u,ct.st)&&!(u.bErr>0)){ const m=100*(u.Dv-u.Rv)/u.C; L.push({ci,st:ct.st,x:_feat(u),y:m-u.b,t:Math.log(u.C/u.E),w:Math.pow(u.E,P.wPow)}); } }));
   const nDone=L.length, trusted=nDone>=P.minDone;
   const fit=(key,priorMean,passes)=>{ const p=5; const wbar=L.length?L.reduce((a,l)=>a+l.w,0)/L.length:1; let off=L.map(()=>0), st={}, rc={}, stW={}, rcW={}, beta=[priorMean,0,0,0,0], res=L.map(()=>0);
     for(let pass=0;pass<(passes||1);pass++){
@@ -75,11 +76,11 @@ function projectNight(contests,prior,params){
     const fSt=stAll[ct.st]?(stDone[ct.st]||0)/stAll[ct.st]:0; const stateSd=P.stateSd*(1-fSt)+P.stateSd*0.25*Math.sqrt(P.kState/(P.kState+stW));
     // the race's own deviation, read from everything it has counted so far — finished counties and partly counted ones
     // (a partly counted county's early batch can lean either way, so its reading carries that extra, county-to-county-correlated noise)
-    let dW=0,dS=0,dB=0,dW2=0; const scC=Math.max(1.5,qCounty/qz);
+    let dW=0,dS=0,dB=0,dW2=0,dE2=0; const scC=Math.max(1.5,qCounty/qz);
     ct.units.forEach(u=>{ if(u.fixed||!(u.C>0)||u.b==null||!(u.E>0)) return; const x=_feat(u); const pred=u.b+x.reduce((q,v,i)=>q+v*S.beta[i],0)+(S.st[ct.st]||0);
       const th=x.reduce((q,v,i)=>q+v*Tn.beta[i],0)+(Tn.st[ct.st]||0); const tot=Math.max(u.C,u.E*Math.exp(th)); const pf=isDone(u,ct.st)?1:u.C/tot;
-      const w=u.C; dW+=w; dW2+=w*w; dS+=w*(100*(u.Dv-u.Rv)/u.C-pred); dB+=w*P.partialBias*(1-pf); });
-    const dPost=dW>0?_mixPost(dS/dW,Math.sqrt((dB/dW)**2+scC*scC*dW2/(dW*dW)),P.raceMix):_mixPost(0,Infinity,P.raceMix);
+      const w=u.C; dW+=w; dW2+=w*w; dE2+=w*w*(u.bErr||0)**2; dS+=w*(100*(u.Dv-u.Rv)/u.C-pred); dB+=w*P.partialBias*(1-pf); });
+    const dPost=dW>0?_mixPost(dS/dW,Math.sqrt((dB/dW)**2+(scC*scC*dW2+dE2)/(dW*dW)),P.raceMix):_mixPost(0,Infinity,P.raceMix);
     const rcHat=dPost.m, raceSd=dPost.sd;
     let cD=0,cR=0,cC=0, remM=0, remV=0, remErr=0, remTurnErr=0, noBase=0, unbE=0, hard=0; const outs=[];
     // places with no baseline on file get the race's average place (flagged, wider)
@@ -94,7 +95,7 @@ function projectNight(contests,prior,params){
       // (so a partly counted county's early batch — mail-first or in-person-first — doesn't get projected onto the rest)
       const mModel=_clamp(u.b+yh,-100,100); const p=(u.C||0)/tot;
       // blend with what this county has counted so far: more counted → trust its own count more (its early batch may be skewed)
-      const sdM=Math.max(1,qCounty/qz), sdP=p>0?Math.max(P.partialFloor,(1-p)*P.partialBias)/Math.max(0.05,Math.sqrt(p)):1e9;
+      const sdM=Math.sqrt(Math.max(1,qCounty/qz)**2+(u.bErr||0)**2), sdP=p>0?Math.max(P.partialFloor,(1-p)*P.partialBias)/Math.max(0.05,Math.sqrt(p)):1e9;
       const mObs=(u.C||0)>0?100*((u.Dv||0)-(u.Rv||0))/u.C:0; const wP=p>0?(1/(sdP*sdP))/(1/(sdP*sdP)+1/(sdM*sdM)):0;
       const mf=wP*mObs+(1-wP)*mModel, sdF=1/Math.sqrt(1/(sdM*sdM)+(p>0?1/(sdP*sdP):0));
       const need=tot*mf/100-((u.Dv||0)-(u.Rv||0)); const rm=_clamp(need,-R,R);
@@ -125,7 +126,7 @@ const UNIT_ALIAS={SD:{shannon:"oglalalakota"}}; // county renamed; the feed and 
 const UNIT_MERGE={IL:{chicago:"cook"}}; // the feed lists the city of Chicago apart from the rest of Cook County in House races; the 2024 files have Cook whole
 function modelUnits(r,det,cf,base24,fy){ const st=r.abbr, F=(cf&&cf[st])||{}; const cd=r.type==="House"?cdOf(r):null; const piece=cd&&cdBase(r,base24);
   const canon=k=>(UNIT_ALIAS[st]&&UNIT_ALIAS[st][k])||k;
-  const pieceBy={}; if(piece&&piece.c){ const nm=base24[st].n||{}; Object.entries(piece.c).forEach(([f,[d,rr,t]])=>{ pieceBy[canon(unitKey(nm[f]||f))]={b:t?100*(d-rr)/t:0,E:t}; }); }
+  const pieceBy={}; if(piece&&piece.c){ const nm=base24[st].n||{}; Object.entries(piece.c).forEach(([f,[d,rr,t,be]])=>{ pieceBy[canon(unitKey(nm[f]||f))]={b:t?100*(d-rr)/t:0,E:t,bErr:be||0}; }); }
   const regs=det&&det.regions&&det.regions.length&&!multiParty(r)?det.regions:null; /* county rows carry only each county's top two */
   if(regs){ // the results feed's region lists vary by state and year: counties plus towns, old CT counties beside planning regions, districts or towns typed as counties
     const look=n=>{ const k0=unitKey(n); const ks=[UNIT_MERGE[st]&&UNIT_MERGE[st][k0],canon(k0),unitKey(String(n).replace(/\s+city$/i,"")),unitKey(String(n).replace(/&/g," and ")),unitKey(n+" planning region")].filter(Boolean); for(const k of ks) if(F[k]) return [k,F[k]]; return [canon(k0),null]; };
@@ -134,8 +135,8 @@ function modelUnits(r,det,cf,base24,fy){ const st=r.abbr, F=(cf&&cf[st])||{}; co
     const use=r.type==="House"?(sets[0]||[]):(sets.slice().sort((a,b)=>score(b)-score(a))[0]||[]);
     const house=r.type==="House", atLarge=cd==="AL";
     let units=use.map(g=>{ const k0=unitKey(g.name), merged=UNIT_MERGE[st]&&UNIT_MERGE[st][k0]; const [k,f]=look(g.name); const pc=pieceBy[k]||pieceBy[canon(k0)];
-      let b=null,E=null; if(house){ if(pc){ b=pc.b; E=pc.E; } else if(f&&atLarge){ b=f[0]; E=f[3]; } } else if(f){ b=f[0]; E=f[3]; } // a district inside one county is not the whole county
-      return {c:merged||(house&&pc?(pieceBy[k]?k:canon(k0)):k),n:g.name,b,s1:f?f[1]:null,s2:f?f[2]:null,E,C:g.total||0,Dv:g.D||0,Rv:g.R||0,rpt:g.rpt||0,merged:!!merged}; });
+      let b=null,E=null,bErr=0; if(house){ if(pc){ b=pc.b; E=pc.E; bErr=pc.bErr||0; } else if(f&&atLarge){ b=f[0]; E=f[3]; } } else if(f){ b=f[0]; E=f[3]; } // a district inside one county is not the whole county
+      return {c:merged||(house&&pc?(pieceBy[k]?k:canon(k0)):k),n:g.name,b,...(bErr?{bErr}:{}),s1:f?f[1]:null,s2:f?f[2]:null,E,C:g.total||0,Dv:g.D||0,Rv:g.R||0,rpt:g.rpt||0,merged:!!merged}; });
     // same place listed twice → keep the fuller one; a city listed apart from its county → add them together
     const by=new Map(); units.forEach(u=>{ const o=by.get(u.c); if(!o){ by.set(u.c,u); return; }
       if(u.merged||o.merged) by.set(u.c,{...o,n:o.merged?u.n:o.n,C:(o.C||0)+(u.C||0),Dv:(o.Dv||0)+(u.Dv||0),Rv:(o.Rv||0)+(u.Rv||0),rpt:Math.min(o.rpt||0,u.rpt||0),merged:false});
@@ -156,7 +157,6 @@ const cdOf=r=>{ if(!r||r.type!=="House") return null; const d=String(r.district|
 const drPair=r=>(r.p1==="D"&&r.p2==="R")||(r.p1==="R"&&r.p2==="D");
 const votesOf=(r,party)=>!r?0:r.p1===party?r.v1:r.p2===party?r.v2:0;
 const counted=r=>(r.v1||0)+(r.v2||0)+(r.others||[]).reduce((a,o)=>a+(o.votes||0),0);
-
 const multiParty=r=>{ const ps=[r.p1,r.p2,...(r.others||[]).map(o=>o.party)].filter(p=>p==="D"||p==="R"); return ps.length>new Set(ps).size&&ps.includes("D")&&ps.includes("R"); };
 const partyVotes=(r,p)=>(r.p1===p?r.v1||0:0)+(r.p2===p?r.v2||0:0)+(r.others||[]).reduce((a,o)=>a+(o.party===p?(o.votes||0):0),0);
 
