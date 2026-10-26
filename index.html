@@ -1630,29 +1630,29 @@ function projectNight(contests, prior, params) {
     let dW = 0, dS = 0, dB = 0, dW2 = 0;
     const scC = Math.max(1.5, qCounty / qz);
     ct.units.forEach((u) => {
-      if (!(u.C > 0) || u.b == null || !(u.E > 0)) return;
+      if (u.fixed || !(u.C > 0) || u.b == null || !(u.E > 0)) return;
       const x = _feat(u), pred = u.b + x.reduce((q, v, i) => q + v * S.beta[i], 0) + (S.st[ct.st] || 0), th = x.reduce((q, v, i) => q + v * Tn.beta[i], 0) + (Tn.st[ct.st] || 0), tot = Math.max(u.C, u.E * Math.exp(th)), pf = isDone(u, ct.st) ? 1 : u.C / tot, w = u.C;
       dW += w, dW2 += w * w, dS += w * (100 * (u.Dv - u.Rv) / u.C - pred), dB += w * P.partialBias * (1 - pf);
     });
     const dPost = dW > 0 ? _mixPost(dS / dW, Math.sqrt((dB / dW) ** 2 + scC * scC * dW2 / (dW * dW)), P.raceMix) : _mixPost(0, 1 / 0, P.raceMix), rcHat = dPost.m, raceSd = dPost.sd;
-    let cD = 0, cR = 0, cC = 0, remM = 0, remV = 0, remErr = 0, remTurnErr = 0, noBase = 0;
+    let cD = 0, cR = 0, cC = 0, remM = 0, remV = 0, remErr = 0, remTurnErr = 0, noBase = 0, unbE = 0;
     const outs = [], kn = ct.units.filter((u) => u.b != null && u.E > 0), kE = kn.reduce((a, u) => a + u.E, 0), avgB = kE ? kn.reduce((a, u) => a + u.b * u.E, 0) / kE : null, avgE = kn.length ? kE / kn.length : null;
     ct.units.forEach((u0) => {
       let u = u0;
-      if (cD += u.Dv || 0, cR += u.Rv || 0, cC += u.C || 0, isDone(u, ct.st)) return;
+      if (cD += u.Dv || 0, cR += u.Rv || 0, cC += u.C || 0, u.fixed || isDone(u, ct.st)) return;
       if (u.b == null || !(u.E > 0)) {
         if (avgB == null) {
           noBase++;
           return;
         }
-        u = { ...u, b: u.b == null ? avgB : u.b, E: u.E > 0 ? u.E : avgE, s1: null, s2: null }, noBase += 0.5;
+        u = { ...u, b: u.b == null ? avgB : u.b, E: u.E > 0 ? u.E : avgE, s1: null, s2: null }, noBase += 0.5, unbE += u.E;
       }
       const x = _feat(u), yh = x.reduce((s, v, i) => s + v * S.beta[i], 0) + (S.st[ct.st] || 0) + rcHat, th = x.reduce((s, v, i) => s + v * Tn.beta[i], 0) + (Tn.st[ct.st] || 0) + (Tn.rc[ci] || 0), tot = Math.max(u.C || 0, u.E * Math.exp(th)), R = Math.max(0, tot - (u.C || 0)), mModel = _clamp(u.b + yh, -100, 100), p = (u.C || 0) / tot, sdM = Math.max(1, qCounty / qz), sdP = p > 0 ? Math.max(0.7, (1 - p) * P.partialBias) / Math.max(0.05, Math.sqrt(p)) : 1e9, mObs = (u.C || 0) > 0 ? 100 * ((u.Dv || 0) - (u.Rv || 0)) / u.C : 0, wP = p > 0 ? 1 / (sdP * sdP) / (1 / (sdP * sdP) + 1 / (sdM * sdM)) : 0, mf = wP * mObs + (1 - wP) * mModel, sdF = 1 / Math.sqrt(1 / (sdM * sdM) + (p > 0 ? 1 / (sdP * sdP) : 0)), need = tot * mf / 100 - ((u.Dv || 0) - (u.Rv || 0)), rm = _clamp(need, -R, R);
       remM += rm, remV += R, remErr += tot * qz * sdF / 100, remTurnErr += R * (Math.exp(qTurn) - 1), R > 0 && outs.push({ c: u0.c, n: u0.n, R, mf, net: rm });
     });
-    const total = cC + remV;
-    if (!(total > 0) || noBase >= 1 && cC < 0.95 * total) return { id: ct.id, m: null };
-    const m = 100 * (cD - cR + remM) / total, remShare = remV / total, indH = 100 * remErr / total, sharedSd = remShare * Math.sqrt(natSd * natSd + stateSd * stateSd + raceSd * raceSd), H = Math.sqrt(indH * indH + (qz * sharedSd) ** 2) + (noBase ? 2 : 0), sdTot = Math.max(0.05, H / qz), pD = remV <= 0 ? m > 0 ? 1 : m < 0 ? 0 : 0.5 : _ncdf(m / sdTot);
+    const total = cC + remV, unbShare = total > 0 ? unbE / total : 0;
+    if (!(total > 0) || noBase >= 1 && unbShare > 0.15 && cC < 0.95 * total) return { id: ct.id, m: null };
+    const m = 100 * (cD - cR + remM) / total, remShare = remV / total, indH = 100 * remErr / total, sharedSd = remShare * Math.sqrt(natSd * natSd + stateSd * stateSd + raceSd * raceSd), H = Math.sqrt(indH * indH + (qz * sharedSd) ** 2) + Math.min(2, 20 * unbShare), sdTot = Math.max(0.05, H / qz), pD = remV <= 0 ? m > 0 ? 1 : m < 0 ? 0 : 0.5 : _ncdf(m / sdTot);
     return { id: ct.id, m, lo: m - H, hi: m + H, H, pD, remShare, counted: cC, expected: total, natPart: remShare * natSd, statePart: remShare * stateSd, st: ct.st, trusted, noBase, raceEff: rcHat, raceSd, top: outs.sort((a, b) => b.R - a.R).slice(0, 5), nUnits: ct.units.length, nDoneUnits: ct.units.filter((u) => isDone(u, ct.st)).length };
   }), obsW = L.reduce((s, l) => s + l.w, 0), obs = obsW ? L.reduce((s, l) => s + l.w * l.y, 0) / obsW : null;
   return { races: out, nDone, trusted, swing: S.beta[0], obs, natSd, stateEff: S.st, stateDone: stDone, stateAll: stAll, fNat, qCounty, mu };
@@ -1685,10 +1685,10 @@ function projectSeats(res, groups, N = 2e3) {
 typeof module != "undefined" && module.exports && (module.exports = { projectNight, projectSeats, PROJ_DEFAULTS, PROJ_LATE_MAIL });
 const MODEL_PRIOR = { mu: 10, label: "D+8.5 national environment", basis: "generic-ballot averages, late Oct 2026 (Silver Bulletin D+9.1 on Oct 23; other trackers about D+8), measured against the 2024 presidential result in each county" }, MODEL_BACKTEST = {
   races: 679,
-  byTime: [[8, 95.3, 3.1, 7.9], [17, 90.1, 2.97, 6.4], [30, 91.6, 2.15, 5.3], [54, 88.7, 1.48, 3.3], [76, 85.5, 0.83, 1.6], [89, 77.9, 0.52, 0.8], [93, 86.7, 0.34, 0.6]],
+  byTime: [[8, 95.2, 3.1, 7.9], [17, 90.1, 2.96, 6.4], [30, 91.4, 2.15, 5.2], [54, 88.4, 1.48, 3.2], [76, 85.4, 0.83, 1.6], [89, 77.8, 0.52, 0.8], [93, 86.7, 0.34, 0.6]],
   // [avg % of vote counted, % of ranges that held the final result, typical miss, range half-width]
-  calibration: [[55, 50], [65, 66], [75, 77], [86, 94], [94, 99]],
-  finalInFirstRange: 95.3,
+  calibration: [[55, 50], [65, 66], [75, 76], [86, 94], [94, 99]],
+  finalInFirstRange: 95.2,
   jumpRate: 2.8,
   seatCoverage: 92.1,
   bigCandidate: { share: 11, cover: 82 },
@@ -1698,32 +1698,41 @@ let cfP = null;
 function loadCountyFeats() {
   return cfP || (cfP = fetch("county-features.json?v=1").then((r) => r.ok ? r.json() : null).catch(() => (cfP = null, null))), cfP;
 }
-const isModeled = (r) => r.level === "Federal" && (r.type === "Senate" || r.type === "House") || r.type === "Governor", runoffUnclear = (o, pr) => (o.abbr === "GA" || o.abbr === "LA") && pr && Math.max(pr.a1 || 0, pr.a2 || 0) < 50, UNIT_ALIAS = { SD: { shannon: "oglalalakota" } };
+const isModeled = (r) => r.level === "Federal" && (r.type === "Senate" || r.type === "House") || r.type === "Governor", runoffUnclear = (o, pr) => (o.abbr === "GA" || o.abbr === "LA") && pr && Math.max(pr.a1 || 0, pr.a2 || 0) < 50, UNIT_ALIAS = { SD: { shannon: "oglalalakota" } }, UNIT_MERGE = { IL: { chicago: "cook" } };
 function modelUnits(r, det, cf, base24, fy) {
-  const st = r.abbr, F = cf && cf[st] || {}, cd = r.type === "House" ? cdOf(r) : null, piece = cd && !newLines(r) && base24 && base24[st] && base24[st].cd && base24[st].cd[cd], pieceBy = {};
+  const st = r.abbr, F = cf && cf[st] || {}, cd = r.type === "House" ? cdOf(r) : null, piece = cd && !newLines(r) && base24 && base24[st] && base24[st].cd && base24[st].cd[cd], canon = (k) => UNIT_ALIAS[st] && UNIT_ALIAS[st][k] || k, pieceBy = {};
   if (piece && piece.c) {
     const nm = base24[st].n || {};
     Object.entries(piece.c).forEach(([f, [d, rr, t]]) => {
-      pieceBy[unitKey(nm[f] || f)] = { b: t ? 100 * (d - rr) / t : 0, E: t };
+      pieceBy[canon(unitKey(nm[f] || f))] = { b: t ? 100 * (d - rr) / t : 0, E: t };
     });
   }
   const regs = det && det.regions && det.regions.length ? det.regions : null;
   if (regs) {
     const look = (n) => {
-      const ks = [UNIT_ALIAS[st] && UNIT_ALIAS[st][unitKey(n)], unitKey(n), unitKey(String(n).replace(/\s+city$/i, "")), unitKey(String(n).replace(/&/g, " and ")), unitKey(n + " planning region")].filter(Boolean);
+      const k0 = unitKey(n), ks = [UNIT_MERGE[st] && UNIT_MERGE[st][k0], canon(k0), unitKey(String(n).replace(/\s+city$/i, "")), unitKey(String(n).replace(/&/g, " and ")), unitKey(n + " planning region")].filter(Boolean);
       for (const k of ks) if (F[k]) return [k, F[k]];
-      return [unitKey(n), null];
-    }, sets = [regs.filter((g) => !/town|planning|state/i.test(g.type || "")), regs.filter((g) => /planning/i.test(g.type || "")), regs.filter((g) => !/state|planning/i.test(g.type || ""))].filter((a) => a.length), score = (a) => a.filter((g) => look(g.name)[1]).length;
-    let units = (r.type === "House" ? sets[0] || [] : sets.slice().sort((a, b2) => score(b2) - score(a))[0] || []).map((g) => {
-      const [k, f] = look(g.name), pc2 = pieceBy[unitKey(g.name)];
+      return [canon(k0), null];
+    }, sets = [regs.filter((g) => !/town|planning|state/i.test(g.type || "")), regs.filter((g) => /planning/i.test(g.type || "")), regs.filter((g) => !/state|planning/i.test(g.type || ""))].filter((a) => a.length), score = (a) => new Set(a.map((g) => look(g.name)).filter((x) => x[1]).map((x) => x[0])).size, use = r.type === "House" ? sets[0] || [] : sets.slice().sort((a, b2) => score(b2) - score(a))[0] || [], house = r.type === "House", atLarge = cd === "AL";
+    let units = use.map((g) => {
+      const k0 = unitKey(g.name), merged = UNIT_MERGE[st] && UNIT_MERGE[st][k0], [k, f] = look(g.name), pc2 = pieceBy[k] || pieceBy[canon(k0)];
       let b2 = null, E2 = null;
-      return r.type === "House" ? pc2 ? (b2 = pc2.b, E2 = pc2.E) : f && regs.length === 1 && (b2 = f[0], E2 = f[3]) : f && (b2 = f[0], E2 = f[3]), { c: k, n: g.name, b: b2, s1: f ? f[1] : null, s2: f ? f[2] : null, E: E2, C: g.total || 0, Dv: g.D || 0, Rv: g.R || 0, rpt: g.rpt || 0 };
+      return house ? pc2 ? (b2 = pc2.b, E2 = pc2.E) : f && (regs.length === 1 || atLarge) && (b2 = f[0], E2 = f[3]) : f && (b2 = f[0], E2 = f[3]), { c: merged || (house && pc2 ? pieceBy[k] ? k : canon(k0) : k), n: g.name, b: b2, s1: f ? f[1] : null, s2: f ? f[2] : null, E: E2, C: g.total || 0, Dv: g.D || 0, Rv: g.R || 0, rpt: g.rpt || 0, merged: !!merged };
     });
     const by = /* @__PURE__ */ new Map();
     if (units.forEach((u) => {
       const o = by.get(u.c);
-      (!o || (u.C || 0) > (o.C || 0)) && by.set(u.c, u);
-    }), units = [...by.values()], r.type !== "House") {
+      if (!o) {
+        by.set(u.c, u);
+        return;
+      }
+      u.merged || o.merged ? by.set(u.c, { ...o, n: o.merged ? u.n : o.n, C: (o.C || 0) + (u.C || 0), Dv: (o.Dv || 0) + (u.Dv || 0), Rv: (o.Rv || 0) + (u.Rv || 0), rpt: Math.min(o.rpt || 0, u.rpt || 0), merged: !1 }) : (u.C || 0) > (o.C || 0) && by.set(u.c, u);
+    }), units = [...by.values()], house) {
+      if (piece && piece.c) {
+        const nP = Object.keys(pieceBy).length;
+        units.filter((u) => pieceBy[u.c]).length >= nP ? units = units.filter((u) => u.b != null) : units = units.map((u) => u.b == null ? { ...u, fixed: !0 } : u);
+      }
+    } else {
       const nF = Object.keys(F).length;
       nF && units.filter((u) => u.b != null).length === nF && (units = units.filter((u) => u.b != null));
     }
