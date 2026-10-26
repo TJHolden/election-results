@@ -38,12 +38,14 @@ function _mixPost(d,sd,mix){ if(!(sd<1e6)) { const v=mix.reduce((a,[w,s])=>a+w*s
   const cs=mix.map(([w,s])=>{ const tv=s*s+sd*sd; const like=w*Math.exp(-d*d/(2*tv))/Math.sqrt(tv); const v=1/(1/(s*s)+1/(sd*sd)); return {like,m:v*d/(sd*sd),v}; });
   const Z=cs.reduce((a,c)=>a+c.like,0)||1; const m=cs.reduce((a,c)=>a+c.like*c.m,0)/Z; const v=cs.reduce((a,c)=>a+c.like*(c.v+c.m*c.m),0)/Z-m*m; return {m,sd:Math.sqrt(Math.max(0,v))}; }
 // contests: [{id, st, units:[{c,b,s1,s2,E, C,Dv,Rv,rpt, bErr?}], ...}]  bErr: sd (pts) of an estimated baseline (new district lines: a county's
-//   piece of a district is estimated) — such places don't teach the night's swing, and their own predictions carry that extra error  prior: {mu} (D-minus-R swing vs baseline, pts)
+//   piece of a district is estimated) — such places don't teach the night's swing, and their own predictions carry that extra error
+//   whole: the unit is a whole race (no county list) — it reads its own race but doesn't teach the night's county swing (one heavy unit
+//   carrying a candidate's own pull would tilt every other race in its state)  prior: {mu} (D-minus-R swing vs baseline, pts)
 function projectNight(contests,prior,params){
   const P={...PROJ_DEFAULTS,...(params||{})}; const mu=prior&&isFinite(prior.mu)?prior.mu:0;
   const isDone=(u,st)=>u.C>0&&u.rpt>=(PROJ_LATE_MAIL.has(st)?P.doneRptLate:P.doneRpt);
   // 1) learning set: finished counties with a baseline
-  const L=[]; contests.forEach((ct,ci)=>ct.units.forEach(u=>{ if(u.b!=null&&u.E>0&&isDone(u,ct.st)&&!(u.bErr>0)){ const m=100*(u.Dv-u.Rv)/u.C; L.push({ci,st:ct.st,x:_feat(u),y:m-u.b,t:Math.log(u.C/u.E),w:Math.pow(u.E,P.wPow)}); } }));
+  const L=[]; contests.forEach((ct,ci)=>ct.units.forEach(u=>{ if(u.b!=null&&u.E>0&&isDone(u,ct.st)&&!(u.bErr>0)&&!u.whole){ const m=100*(u.Dv-u.Rv)/u.C; L.push({ci,st:ct.st,x:_feat(u),y:m-u.b,t:Math.log(u.C/u.E),w:Math.pow(u.E,P.wPow)}); } }));
   const nDone=L.length, trusted=nDone>=P.minDone;
   const fit=(key,priorMean,passes)=>{ const p=5; const wbar=L.length?L.reduce((a,l)=>a+l.w,0)/L.length:1; let off=L.map(()=>0), st={}, rc={}, stW={}, rcW={}, beta=[priorMean,0,0,0,0], res=L.map(()=>0);
     for(let pass=0;pass<(passes||1);pass++){
@@ -151,7 +153,7 @@ function modelUnits(r,det,cf,base24,fy){ const st=r.abbr, F=(cf&&cf[st])||{}; co
     if(units.length&&fits&&based>0&&nFixed<=based) return units; }
   // no county breakdown yet (or an all-party race, followed by party totals): the whole race as one unit (state or district baseline)
   const b=baselineDR(r,base24); const ex=expectedVote(r,base24,fy); const E=ex&&ex.E||(piece&&piece.p?piece.p[2]:null);
-  const mp=multiParty(r); return [{c:"all",b,s1:null,s2:null,E,C:counted(r),Dv:mp?partyVotes(r,"D"):votesOf(r,"D"),Rv:mp?partyVotes(r,"R"):votesOf(r,"R"),rpt:r.rpt}]; }
+  const mp=multiParty(r); return [{c:"all",whole:true,b,s1:null,s2:null,E,C:counted(r),Dv:mp?partyVotes(r,"D"):votesOf(r,"D"),Rv:mp?partyVotes(r,"R"):votesOf(r,"R"),rpt:r.rpt}]; }
 const cdOf=r=>{ if(!r||r.type!=="House") return null; const d=String(r.district||"").trim(); let m=d.match(/(?:^|-)(AL|\d+)$/i); if(m) return /^al$/i.test(m[1])?"AL":String(+m[1]);
   if(/at[- ]large/i.test(r.name||"")) return "AL"; m=String(r.name||"").match(/(\d+)\s*$/); return m?String(+m[1]):null; };
 const drPair=r=>(r.p1==="D"&&r.p2==="R")||(r.p1==="R"&&r.p2==="D");
@@ -208,7 +210,7 @@ window.__rh6=(async function(ids,seeds,prior,opts){ opts=opts||{}; NLSTATES=new 
     const bySt={}; Object.entries(sizes).forEach(([k,v])=>{ const st=k.split('|')[0]; (bySt[st]=bySt[st]||[]).push([k,v]); });
     Object.entries(bySt).forEach(([st,arr])=>{ arr.sort((a,b)=>a[1]-b[1]); const sb=(rg()-0.5)*10; arr.forEach(([k],i)=>{ const pct=i/Math.max(1,arr.length-1);
       const fin=_c(0.08+ZONE[TZ(st)]+0.45*rg()+0.3*pct*(0.5+rg()),0.05,0.98); const start=_c(fin-0.15-0.3*rg(),0,fin-0.01);
-      const sign=(MAIL_EARLY.has(st)?1:-1)*flip; timing[k]={fin,start,bias:sign*Math.abs(4+3*gauss(rg))+sb*0.3+gauss(rg)*3}; }); });
+      const sign=(MAIL_EARLY.has(st)?1:-1)*flip; timing[k]={fin,start,bias:(opts.biasScale??1)*(sign*Math.abs(4+3*gauss(rg))+sb*0.3+gauss(rg)*3)}; }); });
     for(const t of [0.15,0.25,0.35,0.5,0.65,0.8,0.9]){
       const tcs=[];
       const contests=races.map(rc=>{ let cc=0,tt=0; const slim=rc.regs.map(g=>{ const tm=timing[rc.st+'|'+unitKey(g.name)]; const p=t>=tm.fin?1:t<=tm.start?0:(t-tm.start)/(tm.fin-tm.start);
@@ -230,7 +232,7 @@ window.__rh6=(async function(ids,seeds,prior,opts){ opts=opts||{}; NLSTATES=new 
   const grp={}; R.forEach(x=>{ (grp[x.seed+'|'+x.flip+'|'+x.id]=grp[x.seed+'|'+x.flip+'|'+x.id]||[]).push(x); }); let fi=0,fn=0,mv=0,stp=0; Object.values(grp).forEach(a=>{ a.sort((p,q)=>p.t-q.t); fn++; if(a[0].final>=a[0].lo&&a[0].final<=a[0].hi) fi++; for(let i=1;i<a.length;i++){ stp++; if(Math.abs(a[i].m-a[i-1].m)>(a[i-1].hi-a[i-1].lo)/2) mv++; } });
   out.firstIn=Math.round(100*fi/Math.max(1,fn)); out.jump=Math.round(100*mv/Math.max(1,stp));
   out.worst=races.map(rc=>{ const a=R.filter(x=>x.id===rc.id); return {tag:rc.tag,final:+rc.final.toFixed(1),cover:a.length?Math.round(100*a.filter(x=>x.final>=x.lo&&x.final<=x.hi).length/a.length):null,wrong:a.filter(x=>(x.pD>0.5)!==(x.final>0)).length,n:a.length}; }).filter(x=>x.cover!=null).sort((a,b)=>a.cover-b.cover).slice(0,12);
-  // seats: D seats among House races, range vs actual
+  out.rows=opts.rows?rows:undefined; out.racesMeta=races.map(r=>({id:r.id,tag:r.tag,final:r.final,ty:r.ty,whole:false}));
   return out; });
 
 }
