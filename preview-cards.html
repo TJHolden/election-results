@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Card mockups — Election Night</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#faf8f3;--card:#fff;--text:#16304f;--t2:#3c5068;--t3:#6b7280;--bd:#e6e0d4;--bd2:#cdc5b5;
+--safeD:#1d4ed8;--likelyD:#3b82f6;--leanD:#93c5fd;--tiltD:#bfdbfe;
+--safeR:#b91c1c;--likelyR:#ef4444;--leanR:#fca5a5;--tiltR:#fecaca;--toss:#eab308;--accent:#c8703c;--nav:#16304f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 'DM Sans',system-ui,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px 56px}
+.note{background:var(--nav);color:#fff;padding:10px 16px;font-size:13px;text-align:center;letter-spacing:.02em}
+.note b{color:#e08a52}
+h1{font-size:22px;margin:28px 0 4px;letter-spacing:-.01em}
+.sub{color:var(--t3);font-size:13.5px;margin:0 0 26px}
+h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--t3);margin:34px 0 12px;font-weight:500}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:18px 16px 20px}
+.chamber{text-align:center;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--t3);margin-bottom:12px}
+.counts{display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:9px}
+.cnum{font:700 30px/1 'DM Sans';font-variant-numeric:tabular-nums}
+.clab{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--t3);margin-top:4px}
+.mid{text-align:center}.mid .cnum{font-size:22px;color:var(--toss)}
+.bar{position:relative;height:13px;border-radius:7px;overflow:hidden;display:flex;background:var(--bd)}
+.bar i{display:block;height:100%}
+.tick{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--text);opacity:.85}
+.towin{text-align:center;font-size:10.5px;letter-spacing:.09em;color:var(--t3);margin-top:6px;text-transform:uppercase}
+.verdict{text-align:center;margin-top:4px}
+.vlab{font:700 21px/1.2 'DM Sans';letter-spacing:.01em}
+.vsub{font-size:12.5px;color:var(--t3);margin-top:3px}
+.rangebar{margin-top:12px;font-size:12px;color:var(--t2);text-align:center}
+.rangebar b{font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--bd);border-radius:12px;overflow:hidden}
+th{font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:var(--t3);text-align:left;padding:11px 14px;border-bottom:1px solid var(--bd);font-weight:500}
+td{padding:11px 14px;border-bottom:1px solid #f1ece2;font-size:14px}
+tr:last-child td{border-bottom:none}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-size:12.5px;font-weight:500}
+.dot{width:7px;height:7px;border-radius:50%}
+.flip{margin-left:7px;font-size:10px;letter-spacing:.08em;background:var(--toss);color:#3a2d05;padding:2px 6px;border-radius:4px;font-weight:700}
+.mono{font-family:'DM Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.watch{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:10px}
+.wcard{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px 13px}
+.wtop{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.wseat{font-weight:700;font-size:14.5px}
+.wpct{font-size:13px;font-weight:700;font-variant-numeric:tabular-nums}
+.wtag{margin-top:7px}
+.key{display:flex;flex-wrap:wrap;gap:14px;align-items:center;font-size:12px;color:var(--t2);margin-top:12px}
+.key span{display:inline-flex;align-items:center;gap:6px}
+.sw{width:22px;height:11px;border-radius:3px;border:1px solid rgba(0,0,0,.08)}
+@media (max-width:520px){.cnum{font-size:26px}}
+</style></head>
+<body>
+<div class="note"><b>MOCKUP</b> — illustrative numbers, not results. Design only, to compare against the live layout.</div>
+<div class="wrap">
+<h1>Chamber cards</h1>
+<p class="sub">Their layout, your methodology: the needle sits where the forecast seat range falls relative to the majority line — not a win probability, which the engine doesn't produce.</p>
+<div class="cards" id="cards"></div>
+
+<h2>Band key — the thing the live map is currently missing</h2>
+<div class="key" id="key"></div>
+
+<h2>Race table with flip badges</h2>
+<table><thead><tr><th>Chamber</th><th>Seat</th><th>Rating</th><th style="text-align:right">Margin</th></tr></thead>
+<tbody id="rows"></tbody></table>
+
+<h2>Races to watch</h2>
+<div class="watch" id="watch"></div>
+</div>
+<script>
+const C={safeD:'#1d4ed8',likelyD:'#3b82f6',leanD:'#93c5fd',tiltD:'#bfdbfe',
+         safeR:'#b91c1c',likelyR:'#ef4444',leanR:'#fca5a5',tiltR:'#fecaca',toss:'#eab308'};
+
+const chambers=[
+ {name:'U.S. House',seats:435,win:218,d:211,r:207,toss:17,lo:211,hi:225,med:218,span:24},
+ {name:'U.S. Senate',seats:100,win:51,d:46,r:49,toss:5,lo:46,hi:51,med:49,span:7},
+ {name:'Governors',seats:50,win:26,d:24,r:22,toss:4,lo:24,hi:28,med:26,span:6}];
+
+function verdict(med,win,lo,hi){
+ const m=med-win;
+ if(lo>=win) return ['Democrats hold',C.safeD];
+ if(hi<win)  return ['Republicans hold',C.safeR];
+ if(Math.abs(m)<=1) return ['Too close to call',C.toss];
+ return m>0?['Leaning Democratic',C.likelyD]:['Leaning Republican',C.likelyR];
+}
+function arc(cx,cy,r,a0,a1,w){
+ const p=(a,rr)=>[cx+rr*Math.cos(a*Math.PI/180),cy+rr*Math.sin(a*Math.PI/180)];
+ const [x0,y0]=p(a0,r),[x1,y1]=p(a1,r),[x2,y2]=p(a1,r-w),[x3,y3]=p(a0,r-w);
+ const big=Math.abs(a1-a0)>180?1:0;
+ return `M${x0} ${y0}A${r} ${r} 0 ${big} 1 ${x1} ${y1}L${x2} ${y2}A${r-w} ${r-w} 0 ${big} 0 ${x3} ${y3}Z`;
+}
+function gauge(ch){
+ const segs=[[180,216,C.safeD],[216,252,C.leanD],[252,288,C.toss],[288,324,C.leanR],[324,360,C.safeR]];
+ const t=Math.max(-1,Math.min(1,(ch.med-ch.win)/ch.span));   // +ve = D advantage
+ const ang=270-t*90;                                          // 180=left(D) 360=right(R)
+ const cx=130,cy=118,r=100;
+ const nx=cx+78*Math.cos(ang*Math.PI/180), ny=cy+78*Math.sin(ang*Math.PI/180);
+ return `<svg viewBox="0 0 260 142" width="100%" height="auto" role="img" aria-label="${ch.name} forecast dial">
+ ${segs.map(s=>`<path d="${arc(cx,cy,r,s[0],s[1],17)}" fill="${s[2]}"/>`).join('')}
+ <text x="8" y="134" font-size="9.5" fill="#6b7280" letter-spacing=".08em">SAFE D</text>
+ <text x="252" y="134" font-size="9.5" fill="#6b7280" text-anchor="end" letter-spacing=".08em">SAFE R</text>
+ <line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="#16304f" stroke-width="2.6" stroke-linecap="round"/>
+ <circle cx="${cx}" cy="${cy}" r="6" fill="#16304f"/></svg>`;
+}
+document.getElementById('cards').innerHTML=chambers.map(ch=>{
+ const [v,vc]=verdict(ch.med,ch.win,ch.lo,ch.hi);
+ const tot=ch.d+ch.r+ch.toss, pd=ch.d/tot*100, pt=ch.toss/tot*100, pr=ch.r/tot*100;
+ return `<div class="card">
+  <div class="chamber">${ch.name}</div>
+  <div class="counts">
+    <div><div class="cnum" style="color:${C.safeD}">${ch.d}</div><div class="clab">Dem</div></div>
+    <div class="mid"><div class="cnum">${ch.toss}</div><div class="clab">Too close</div></div>
+    <div style="text-align:right"><div class="cnum" style="color:${C.safeR}">${ch.r}</div><div class="clab">Rep</div></div>
+  </div>
+  <div class="bar"><i style="width:${pd}%;background:${C.safeD}"></i><i style="width:${pt}%;background:${C.toss}"></i><i style="width:${pr}%;background:${C.safeR}"></i>
+    <span class="tick" style="left:calc(${ch.win/ch.seats*100}% - 1px)"></span></div>
+  <div class="towin">${ch.win} to win</div>
+  ${gauge(ch)}
+  <div class="verdict"><div class="vlab" style="color:${vc}">${v}</div>
+   <div class="vsub">forecast ${ch.lo}–${ch.hi} D · from votes counted so far</div></div>
+ </div>`;}).join('');
+
+document.getElementById('key').innerHTML=[['Safe D',C.safeD],['Likely D',C.likelyD],['Lean D',C.leanD],['Tilt D',C.tiltD],
+ ['Too close',C.toss],['Tilt R',C.tiltR],['Lean R',C.leanR],['Likely R',C.likelyR],['Safe R',C.safeR]]
+ .map(([l,c])=>`<span><i class="sw" style="background:${c}"></i>${l}</span>`).join('');
+
+const rows=[['Governor','Alaska','Lean D',C.leanD,true,'D+3.1'],['Senate','Alaska','Tilt D',C.tiltD,true,'D+0.8'],
+ ['House','ME-02','Lean R',C.leanR,false,'R+2.4'],['Senate','Maine','Too close',C.toss,true,'D+0.3'],
+ ['House','MI-04','Likely R',C.likelyR,false,'R+6.9'],['Governor','Georgia','Too close',C.toss,true,'D+0.4'],
+ ['House','TX-35','Safe D',C.safeD,false,'D+21.6']];
+document.getElementById('rows').innerHTML=rows.map(([ch,seat,rate,col,flip,m])=>
+ `<tr><td style="color:var(--t3)">${ch}</td><td><b>${seat}</b>${flip?'<span class="flip">FLIP</span>':''}</td>
+  <td><span class="pill" style="background:${col}22;color:${/Too close/.test(rate)?'#8a6d08':col}"><i class="dot" style="background:${col}"></i>${rate}</span></td>
+  <td class="mono" style="text-align:right;color:${m[0]==='D'?C.safeD:C.safeR}">${m}</td></tr>`).join('');
+
+const watch=[['ME-02','R 50.2%',C.leanR],['Senate · Maine','D 50.3%',C.toss],['GA-GOV','D 50.4%',C.toss],
+ ['MI-04','R 51.7%',C.leanR],['AK-GOV','D 53.4%',C.leanD],['OH-SEN','D 54.9%',C.likelyD]];
+document.getElementById('watch').innerHTML=watch.map(([s,p,c])=>
+ `<div class="wcard"><div class="wtop"><span class="wseat">${s}</span><span class="wpct" style="color:${c==C.toss?'#8a6d08':c}">${p}</span></div>
+  <div class="wtag"><span class="pill" style="background:${c}22;color:${c==C.toss?'#8a6d08':c}"><i class="dot" style="background:${c}"></i>Too close</span></div></div>`).join('');
+</script>
+</body></html>
