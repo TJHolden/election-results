@@ -5,12 +5,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Election Night Live Results</title>
-<meta name="build" content="20261031215318">
+<meta name="build" content="20261031215522">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261031215318"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261031215522"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -2206,10 +2206,12 @@ function ChamberDial({ label, sp, majority, total }) {
   const card = { background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 6, minWidth: 0 }, head = /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 } }, /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SERIF, fontSize: 17, fontWeight: 700 } }, label), majority ? /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 11, color: T.text3 } }, majority, " for control") : null);
   if (!sp) return /* @__PURE__ */ React.createElement("div", { style: card }, head, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.text3 } }, "The dial appears once votes are being counted."));
   if (!(((_a = sp.nVotes) != null ? _a : sp.n) >= (sp.n + sp.unprojected) / 2)) return /* @__PURE__ */ React.createElement("div", { style: card }, head, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.text3 } }, "Shows up once most seats are counting \xB7 ", (_b = sp.nVotes) != null ? _b : sp.n, " of ", sp.n + sp.unprojected, " have votes so far."));
-  const N = total || sp.chamberTotal, pCtl = majority && sp.dS && !sp.unprojected ? sp.dS.filter((x) => x >= majority).length / sp.dS.length : null, v = pCtl != null ? pCtl : Math.max(0, Math.min(1, (sp.d[0] + sp.d[1]) / 2 / N)), W = 240, H = 132, cx = 120, cy = 116, R = 92, TH = 20, polar = (r, deg) => [cx + r * Math.cos(Math.PI * deg / 180), cy - r * Math.sin(Math.PI * deg / 180)], arc = (r, a0, a1) => {
+  const N = total || sp.chamberTotal, pCtl = majority && sp.dS && !sp.unprojected ? sp.dS.filter((x) => x >= majority).length / sp.dS.length : null;
+  if (majority && pCtl == null) return /* @__PURE__ */ React.createElement("div", { style: card }, head, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.text3 } }, "The chance of control shows once every seat can be forecast", sp.unprojected ? ` \xB7 ${sp.unprojected} seat${sp.unprojected === 1 ? "" : "s"} too early` : "", "."));
+  const v = pCtl != null ? pCtl : Math.max(0, Math.min(1, (sp.d[0] + sp.d[1]) / 2 / N)), W = 240, H = 132, cx = 120, cy = 116, R = 92, TH = 20, polar = (r, deg) => [cx + r * Math.cos(Math.PI * deg / 180), cy - r * Math.sin(Math.PI * deg / 180)], arc = (r, a0, a1) => {
     const [x0, y0] = polar(r, a0), [x1, y1] = polar(r, a1);
     return `M${x0.toFixed(1)},${y0.toFixed(1)} A${r},${r} 0 0 ${a1 < a0 ? 1 : 0} ${x1.toFixed(1)},${y1.toFixed(1)}`;
-  }, ang = (x) => 180 - 180 * Math.max(0, Math.min(1, x)), bands = [[0, 0.1, T.rep], [0.1, 0.35, T.rep + "88"], [0.35, 0.65, T.border2], [0.65, 0.9, T.dem + "88"], [0.9, 1, T.dem]], na = ang(v), [nx, ny] = polar(R - TH - 6, na), pct = (x) => x > 0.99 ? ">99" : x < 0.01 ? "<1" : Math.round(x * 100);
+  }, ang = (x) => 180 - 180 * Math.max(0, Math.min(1, x)), bands = [[0, 0.1, T.rep], [0.1, 0.35, T.rep + "88"], [0.35, 0.65, T.border2], [0.65, 0.9, T.dem + "88"], [0.9, 1, T.dem]], na = ang(v), [nx, ny] = polar(R - TH - 14, na), pct = (x) => x > 0.99 ? ">99" : x < 0.01 ? "<1" : Math.round(x * 100);
   return /* @__PURE__ */ React.createElement("div", { style: card }, head, /* @__PURE__ */ React.createElement(
     "svg",
     {
@@ -2221,10 +2223,10 @@ function ChamberDial({ label, sp, majority, total }) {
     bands.map(([a, b, c], i) => /* @__PURE__ */ React.createElement("path", { key: i, d: arc(R - TH / 2, ang(a), ang(b)), stroke: c, strokeWidth: TH, fill: "none", strokeLinecap: "butt" })),
     /* @__PURE__ */ React.createElement("line", { x1: cx, y1: cy, x2: nx, y2: ny, stroke: T.nav, strokeWidth: "3", strokeLinecap: "round" }),
     /* @__PURE__ */ React.createElement("circle", { cx, cy, r: "6", fill: T.nav }),
-    /* @__PURE__ */ React.createElement("text", { x: cx, y: cy - 26, textAnchor: "middle", fontFamily: MONO, fontSize: "30", fontWeight: "700", fill: v >= 0.5 ? T.demB : T.repB }, pCtl != null ? pct(v) + "%" : Math.round(v * 100) + "%"),
+    /* @__PURE__ */ React.createElement("text", { x: cx, y: cy - 4, textAnchor: "middle", fontFamily: MONO, fontSize: "26", fontWeight: "700", fill: v >= 0.5 ? T.demB : T.repB }, pCtl != null ? pct(v) + "%" : Math.round(v * 100) + "%"),
     /* @__PURE__ */ React.createElement("text", { x: 14, y: cy + 12, fontFamily: SANS, fontSize: "10", fill: T.repB, fontWeight: "700" }, "R"),
     /* @__PURE__ */ React.createElement("text", { x: W - 14, y: cy + 12, textAnchor: "end", fontFamily: SANS, fontSize: "10", fill: T.demB, fontWeight: "700" }, "D")
-  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontFamily: MONO, fontWeight: 700, fontSize: 15, marginTop: -4 } }, /* @__PURE__ */ React.createElement("span", { style: { color: T.demB } }, sp.d[0] === sp.d[1] ? sp.d[0] : `${sp.d[0]}\u2013${sp.d[1]}`), /* @__PURE__ */ React.createElement("span", { style: { color: T.repB } }, sp.r[0] === sp.r[1] ? sp.r[0] : `${sp.r[0]}\u2013${sp.r[1]}`)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.text2, lineHeight: 1.4 } }, pCtl != null ? /* @__PURE__ */ React.createElement(React.Fragment, null, "Chance Democrats reach ", majority, ".") : majority ? /* @__PURE__ */ React.createElement(React.Fragment, null, "The chance of control shows once every seat can be forecast.") : /* @__PURE__ */ React.createElement(React.Fragment, null, "Democratic share of ", N, " governorships.")));
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", fontFamily: MONO, fontWeight: 700, fontSize: 15, marginTop: -4 } }, /* @__PURE__ */ React.createElement("span", { style: { color: T.repB } }, sp.r[0] === sp.r[1] ? sp.r[0] : `${sp.r[0]}\u2013${sp.r[1]}`), /* @__PURE__ */ React.createElement("span", { style: { color: T.demB } }, sp.d[0] === sp.d[1] ? sp.d[0] : `${sp.d[0]}\u2013${sp.d[1]}`)), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.text2, lineHeight: 1.4 } }, pCtl != null ? /* @__PURE__ */ React.createElement(React.Fragment, null, "Chance Democrats reach ", majority, ".") : majority ? /* @__PURE__ */ React.createElement(React.Fragment, null, "The chance of control shows once every seat can be forecast.") : /* @__PURE__ */ React.createElement(React.Fragment, null, "Democratic share of ", N, " governorships.")));
 }
 function ProjectionsTab({ yr26, seatProj, estM, all, model, anyVotes, snaps, onPickState }) {
   const narrow = React.useContext(NarrowCtx), [kind, setKind] = useState("All"), [aggView, setAggView] = useState(() => lsGet("aggView", 400 * 864e5) || "bars");
