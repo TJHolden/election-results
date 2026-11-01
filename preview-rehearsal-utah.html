@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Utah Election Night</title><meta name="robots" content="noindex, nofollow">
-<meta name="build" content="20261101085622">
+<meta name="build" content="20261101114457">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261101085622"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261101114457"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -3989,10 +3989,10 @@
         });
         useEffect(() => {
           if (!seatProj || !anyVotes || !yr26 || Date.now() < NIGHT0) return;
-          const pick = (sp) => {
+          const ready = (sp) => {
             var _a;
-            return !sp || !sp.dS || ((_a = sp.nVotes) != null ? _a : sp.n) < (sp.n + sp.unprojected) / 2 ? null : { lo: sp.d[0], hi: sp.d[1], med: sp.dMed, rlo: sp.r[0], rhi: sp.r[1], rmed: sp.rMed };
-          }, S = pick(seatProj.Senate), Hh = pick(seatProj.House);
+            return !!(sp && sp.dS && ((_a = sp.nVotes) != null ? _a : sp.n) >= (sp.n + sp.unprojected) / 2);
+          }, open2 = ready(seatProj.Senate) || ready(seatProj.House), pick = (sp) => !open2 || !sp || !sp.dS ? null : { lo: sp.d[0], hi: sp.d[1], med: sp.dMed, rlo: sp.r[0], rhi: sp.r[1], rmed: sp.rMed }, S = pick(seatProj.Senate), Hh = pick(seatProj.House);
           if (!S && !Hh) return;
           const now = Date.now();
           setSnaps((a) => {
