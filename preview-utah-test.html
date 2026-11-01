@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Utah Election Night</title><meta name="robots" content="noindex, nofollow">
-<meta name="build" content="20261101004900">
+<meta name="build" content="20261101005059">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261101004900"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261101005059"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -2883,25 +2883,6 @@
             };
           }
         }, [focusRaceId, focusNoVotes, focusRpt, feats]);
-        const [detail2, setDetail2] = useState(null), beside2Id = besideRace ? besideRace.id : null, beside2NoVotes = besideRace ? besideRace.v1 + besideRace.v2 === 0 : !0, beside2Rpt = besideRace ? besideRace.rpt : 0;
-        useEffect(() => {
-          let on = !0;
-          const same = detail2 && detail2.id === beside2Id;
-          if (same || setDetail2(null), beside2Id != null) {
-            if (beside2NoVotes) {
-              setDetail2({ id: beside2Id, name: besideRace.name, rpt: 0, regions: [], byName: {}, noVotes: !0 });
-              return;
-            }
-            if (!same) {
-              const cached = peekDetail(beside2Id);
-              cached && setDetail2(cached);
-            }
-            return fetchDetail(beside2Id).then((d) => on && setDetail2(d)).catch(() => {
-            }), () => {
-              on = !1;
-            };
-          }
-        }, [beside2Id, beside2NoVotes, beside2Rpt, feats]);
         const priorReq = useRef(0), loadPrior = useCallback(() => {
           if (!focusRace) return;
           setPrior("loading");
@@ -3026,7 +3007,26 @@
         }, [byType, mapType, focusRace]), besideRace = besideWantId && besideSibs.find((r) => String(r.id) === besideWantId) || null, pickFocus = (id) => {
           const prev = focusRace ? String(focusRace.id) : null;
           besideWantId && besideWantId === String(id) && prev && prev !== String(id) && setBesideType("race:" + prev), setFocusId(id), setOpen(id);
-        }, beside = !isDistrictType(mapType) && view !== "history" && (besideRace || besideType && byType[besideType] ? besideType : null), distNum = (r) => parseInt((r.district || r.name).replace(/\D/g, "")) || 0, listRaces = useMemo(() => {
+        }, [detail2, setDetail2] = useState(null), beside2Id = besideRace ? besideRace.id : null, beside2NoVotes = besideRace ? besideRace.v1 + besideRace.v2 === 0 : !0, beside2Rpt = besideRace ? besideRace.rpt : 0;
+        useEffect(() => {
+          let on = !0;
+          const same = detail2 && detail2.id === beside2Id;
+          if (same || setDetail2(null), beside2Id != null) {
+            if (beside2NoVotes) {
+              setDetail2({ id: beside2Id, name: besideRace.name, rpt: 0, regions: [], byName: {}, noVotes: !0 });
+              return;
+            }
+            if (!same) {
+              const cached = peekDetail(beside2Id);
+              cached && setDetail2(cached);
+            }
+            return fetchDetail(beside2Id).then((d) => on && setDetail2(d)).catch(() => {
+            }), () => {
+              on = !1;
+            };
+          }
+        }, [beside2Id, beside2NoVotes, beside2Rpt, feats]);
+        const beside = !isDistrictType(mapType) && view !== "history" && (besideRace || besideType && byType[besideType] ? besideType : null), distNum = (r) => parseInt((r.district || r.name).replace(/\D/g, "")) || 0, listRaces = useMemo(() => {
           let l = typeRaces;
           return status === "open" ? l = l.filter((r) => !isDecided(r)) : status === "called" && (l = l.filter(isDecided)), [...l].sort((a, b) => isDistrictType(mapType) ? distNum(a) - distNum(b) || a.name.localeCompare(b.name) : isDecided(a) - isDecided(b) || Math.abs(marginOf(a)) - Math.abs(marginOf(b)));
         }, [typeRaces, status, mapType]), stateMargin = focusRace ? signedMargin(focusRace) : 0, priorMargin = prior && prior !== "loading" && (prior != null && prior.race) ? signedMargin(prior.race) : null;
