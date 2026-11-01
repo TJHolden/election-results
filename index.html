@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Election Night Live Results</title>
-<meta name="build" content="20261101005300">
+<meta name="build" content="20261101011101">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261101005300"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261101011101"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -172,7 +172,7 @@ function raceKeyOf(r) {
   const d = r.district ? String(parseInt(r.district, 10) || r.district) : null;
   return { office: r.type === "State Assembly" || r.type === "House of Delegates" ? "State House" : r.type, district: d };
 }
-const CIVIC = "https://civicapi.org/api/v2", SENATE_HOLDOVERS = { D: 34, R: 31, note: "Seats not up in 2026: 32 Democrats + 2 independents who caucus with them \xB7 31 Republicans (verified Oct 22, 2026 \u2014 270toWin, Ballotpedia)" }, CHAMBER = { Senate: { total: 100, majority: 51 }, House: { total: 435, majority: 218 } }, POLLS_CLOSE_2026 = (() => {
+const CIVIC = "https://civicapi.org/api/v2", SENATE_HOLDOVERS = { D: 34, R: 31, note: "Seats not up in 2026: 32 Democrats + 2 independents who caucus with them \xB7 31 Republicans (verified Oct 22, 2026 \u2014 270toWin, Ballotpedia)" }, CHAMBER = { Senate: { total: 100, majority: 51 }, House: { total: 435, majority: 218 } }, GOV_TOTAL_2026 = 36, POLLS_CLOSE_2026 = (() => {
   const t = (h) => new Date(Date.UTC(2026, 10, 3, Math.floor(h) + 5, Math.round(h % 1 * 60))).toISOString();
   return Object.fromEntries(Object.entries({ AL: [20], AK: [24, 25], AZ: [21], AR: [20.5], CA: [23], CO: [21], CT: [20], DE: [20], DC: [20], FL: [19, 20], GA: [19], HI: [24], ID: [22, 23], IL: [20], IN: [18, 19], IA: [21], KS: [20, 21], KY: [18, 19], LA: [21], ME: [20], MD: [20], MA: [20], MI: [20, 21], MN: [21], MS: [20], MO: [20], MT: [22], NE: [21], NV: [22], NH: [20], NJ: [20], NM: [21], NY: [21], NC: [19.5], ND: [20, 21], OH: [19.5], OK: [20], OR: [23, 22], PA: [20], RI: [20], SC: [19], SD: [20, 21], TN: [20], TX: [20, 21], UT: [22], VT: [19], VA: [19], WA: [23], WV: [19.5], WI: [21], WY: [21] }).map(([ab, hs]) => [ab, hs.map(t)]));
 })(), POLLS_SPLIT = {
@@ -4057,7 +4057,7 @@ function ElectionCommandCenterInner() {
       const sen = all.filter((r) => r.level === "Federal" && r.type === "Senate"), hou = all.filter((r) => r.level === "Federal" && r.type === "House"), HO = yr26 ? SENATE_HOLDOVERS : { D: 0, R: 0 };
       return { Senate: seatRange(sen, est2.proj, HO.D, HO.R, 100), House: seatRange(hou, est2.proj, 0, 0, 435), Governor: (() => {
         const g = all.filter((r) => r.type === "Governor");
-        return seatRange(g, est2.proj, 0, 0, g.length);
+        return seatRange(g, est2.proj, 0, 0, yr26 ? Math.max(GOV_TOTAL_2026, g.length) : g.length);
       })(), S: est2.proj.S, n: est2.proj.nSw, model: est2.proj.model };
     } catch {
       return null;
@@ -4119,7 +4119,7 @@ function ElectionCommandCenterInner() {
     const mk = (type, seats, majority, majorityB, holdD, holdR) => {
       const rs = all.filter((r) => r.type === type && !preElection(r.electionDate)), dec = rs.filter(isDecided), und = rs.filter((r) => !isDecided(r)), aW = dec.filter((r) => leaderOf(r) === "D").length + holdD, bW = dec.filter((r) => leaderOf(r) === "R").length + holdR, aL = und.filter((r) => r.v1 + r.v2 > 0 && leaderOf(r) === "D").length, bL = und.filter((r) => r.v1 + r.v2 > 0 && leaderOf(r) === "R").length;
       return { a: aW, b: bW, aLead: aL, bLead: bL, none: Math.max(0, seats - aW - bW - aL - bL), seats, majority, majorityB: majorityB || majority, lead: aL + bL };
-    }, gov = all.filter((r) => r.type === "Governor" && !preElection(r.electionDate)).length;
+    }, govN = all.filter((r) => r.type === "Governor" && !preElection(r.electionDate)).length, gov = yr26 ? Math.max(GOV_TOTAL_2026, govN) : govN;
     return {
       Senate: mk("Senate", CHAMBER.Senate.total, CHAMBER.Senate.majority, yr26 ? CHAMBER.Senate.majority - 1 : CHAMBER.Senate.majority, SENATE_HOLDOVERS.D, SENATE_HOLDOVERS.R),
       House: mk("House", CHAMBER.House.total, CHAMBER.House.majority, CHAMBER.House.majority, 0, 0),
@@ -4348,7 +4348,34 @@ function ElectionCommandCenterInner() {
       const xs = pollTable.filter((x) => x.pdr != null && x[k] && x[k].r && x[k].dr != null);
       out[y] = xs.length ? { n: xs.length, avg: xs.reduce((a, x) => a + (x.pdr - x[k].dr), 0) / xs.length } : null;
     }), out;
-  }, [pollTable]), unmatchedPoll = useMemo(() => pollTable.filter((x) => x.status === "missing").map((x) => x.p), [pollTable]), [pollSort, setPollSort] = useState("state"), [accOpen, setAccOpen] = useState(null), acc = useMemo(() => {
+  }, [pollTable]), unmatchedPoll = useMemo(() => pollTable.filter((x) => x.status === "missing").map((x) => x.p), [pollTable]), [pollSort, setPollSort] = useState("state"), [accOpen, setAccOpen] = useState(null), [pollCol, setPollCol] = useState(null), POLL_COLS = { State: "state", Race: "race", "Poll margin": "pm", "Result margin": "am", 2024: "c24", 2022: "c22", "Poll miss": "err", In: "in" }, drMargin = (m, p1, p2) => m == null ? null : p1 === "D" && (p2 == null || p2 === "R") ? m : p1 === "R" && (p2 == null || p2 === "D") ? -m : null, pollColVal = (x, k) => {
+    const p = x.p;
+    if (k === "state") return String(p.abbr || p.state || "");
+    if (k === "race") return String(p.raceName || "");
+    if (k === "pm") return drMargin(x.pm, p.pp1, p.pp2);
+    if (k === "am") {
+      const a = x.s1 && x.s1.party && x.s1.party !== "?" ? x.s1.party : p.pp1, b = x.s2 && x.s2.party && x.s2.party !== "?" ? x.s2.party : p.pp2;
+      return drMargin(x.am, a, b);
+    }
+    if (k === "c24" || k === "c22") {
+      const c = k === "c24" ? x.c24 : x.c22;
+      return c && c.r && !c.unopp ? drMargin(marginOf(c.r), c.r.p1) : null;
+    }
+    return k === "err" ? x.err == null ? null : Math.abs(x.err) : k === "in" && x.race && x.race.v1 + x.race.v2 > 0 ? x.race.rpt : null;
+  }, pollColCmp = (a, b) => {
+    const { k, dir } = pollCol, s = dir === "asc" ? 1 : -1, va = pollColVal(a, k), vb = pollColVal(b, k);
+    if (va == null || vb == null) {
+      if (va != null) return -1;
+      if (vb != null) return 1;
+    } else if (typeof va == "string") {
+      const c = va.localeCompare(vb);
+      if (c) return s * c;
+    } else if (va !== vb) return s * (va - vb);
+    return String(a.p.abbr || "").localeCompare(String(b.p.abbr || "")) || a.i - b.i;
+  }, pollColClick = (k) => setPollCol((c) => {
+    const def = k === "state" || k === "race" ? "asc" : "desc";
+    return !c || c.k !== k ? { k, dir: def } : c.dir === def ? { k, dir: def === "asc" ? "desc" : "asc" } : null;
+  }), acc = useMemo(() => {
     const polled = all.filter((r) => r.poll1 != null && r.poll2 != null), rows = polled.filter((r) => r.a1 + r.a2 > 0).map((r) => {
       const pm = r.poll1 - r.poll2, am = marginOf(r);
       return { race: r, pm, am, err: Math.abs(am - pm), dir: pm > 0 && am > 0 || pm < 0 && am < 0 };
@@ -4466,12 +4493,27 @@ function ElectionCommandCenterInner() {
   } })), !ONLY && stateSel && /* @__PURE__ */ React.createElement(Boundary, { key: "b" + stateSel, onClose: closeState }, /* @__PURE__ */ React.createElement(StatePopup, { key: stateSel, abbr: stateSel, races: stateRaces, hist, calledAt, onClose: closeState, initialRaceId: popupRace, initialView: mapView, cmpYear, initialMode: popupMode, closeAt: pollsClose[stateSel], onTypeChange: setPopupType })), tab === "accuracy" && pollDrag && /* @__PURE__ */ React.createElement("div", { style: { position: "fixed", inset: 0, zIndex: 9999, background: T.nav + "cc", display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" } }, /* @__PURE__ */ React.createElement("div", { style: { padding: "40px 56px", borderRadius: 16, border: `3px dashed ${T.gold}`, background: T.card, textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 26, fontWeight: 700, color: T.text } }, "Drop to load poll numbers"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: T.text2, marginTop: 6 } }, pollFile ? `Replaces ${pollFile}` : "Excel (.xlsx) or CSV"))), tab === "accuracy" && /* @__PURE__ */ React.createElement("div", { style: { padding: "20px 24px", display: "flex", flexDirection: "column", gap: 20 } }, !acc.polled && /* @__PURE__ */ React.createElement("div", { onClick: () => {
     var _a;
     return (_a = pollRef.current) == null ? void 0 : _a.click();
-  }, style: { padding: "64px 24px", borderRadius: 10, border: `2px dashed ${T.border2}`, background: T.card, cursor: "pointer", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 24, fontWeight: 700, marginBottom: 6 } }, "Drop your final poll numbers here"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: T.text2, maxWidth: 460, margin: "0 auto" } }, "Drag the poll tracker Excel file or CSV anywhere onto this page, click to choose it, or paste rows from the spreadsheet. Each race is matched to live results by state and race name, and the scorecard below fills in as results come in.")), unmatchedPoll.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 16px", background: T.amber + "14", border: `1px solid ${T.amber}50`, borderRadius: 10, fontSize: 12, color: T.text2 } }, /* @__PURE__ */ React.createElement("b", { style: { color: T.amber } }, unmatchedPoll.length, " row", unmatchedPoll.length > 1 ? "s" : "", " in your tracker have no matching race in civicAPI's data:"), " ", unmatchedPoll.slice(0, 8).map((p) => `${p.state} \u2014 ${p.raceName}`).join(" \xB7 "), unmatchedPoll.length > 8 ? ` \xB7 +${unmatchedPoll.length - 8} more` : "", /* @__PURE__ */ React.createElement("div", { style: { color: T.text3, marginTop: 4 } }, 'Matching uses state + office + district number, so "PA SD 24", "SD-24", and "State Senate District 24" all work. Use "U.S. Senate" or "Governor" for statewide, "CD 8" for House, "Prop 36" for measures. Make sure the state is spelled out or a 2-letter code.')), pollTable.length > 0 && !acc.rows.length && /* @__PURE__ */ React.createElement("div", { style: { padding: "14px 18px", color: T.text2, fontSize: 13, background: T.card, border: `1px solid ${T.border}`, borderRadius: 10 } }, /* @__PURE__ */ React.createElement("b", null, pollTable.length, " polls loaded"), " \xB7 ", pollTable.filter((x) => x.status === "matched").length, " matched to a live race", pollTable.some((x) => x.status === "names") ? ` \xB7 ${pollTable.filter((x) => x.status === "names").length} race found but a candidate name differs` : "", unmatchedPoll.length ? ` \xB7 ${unmatchedPoll.length} not in civicAPI` : "", ". The scorecard fills in once votes are counted on election night."), pollTable.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", borderBottom: `1px solid ${T.border}` } }, /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 11, fontWeight: 700, letterSpacing: 2, color: T.goldText, textTransform: "uppercase", marginRight: "auto" } }, "Your polls \xB7 ", pollTable.length), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: T.text3 } }, "Sort"), /* @__PURE__ */ React.createElement("select", { value: pollSort, onChange: (e) => setPollSort(e.target.value), style: { fontFamily: SANS, fontSize: 12, padding: "4px 8px", borderRadius: 6, border: `1px solid ${T.border2}`, background: "#fff" } }, /* @__PURE__ */ React.createElement("option", { value: "state" }, "By state"), /* @__PURE__ */ React.createElement("option", { value: "status" }, "Problems first"), /* @__PURE__ */ React.createElement("option", { value: "close" }, "Closest poll first"), /* @__PURE__ */ React.createElement("option", { value: "err" }, "Biggest miss first"))), (pollCmp[2024] || pollCmp[2022]) && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: "6px 22px", padding: "0 18px 12px", fontSize: 12, color: T.text2 } }, [["2024", "Trump\u2013Harris 2024 (statewide or district; a legislative seat's own 2024 race)"], ["2022", "the same office in 2022"]].map(([y, what]) => {
+  }, style: { padding: "64px 24px", borderRadius: 10, border: `2px dashed ${T.border2}`, background: T.card, cursor: "pointer", textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 24, fontWeight: 700, marginBottom: 6 } }, "Drop your final poll numbers here"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 13, color: T.text2, maxWidth: 460, margin: "0 auto" } }, "Drag the poll tracker Excel file or CSV anywhere onto this page, click to choose it, or paste rows from the spreadsheet. Each race is matched to live results by state and race name, and the scorecard below fills in as results come in.")), unmatchedPoll.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { padding: "12px 16px", background: T.amber + "14", border: `1px solid ${T.amber}50`, borderRadius: 10, fontSize: 12, color: T.text2 } }, /* @__PURE__ */ React.createElement("b", { style: { color: T.amber } }, unmatchedPoll.length, " row", unmatchedPoll.length > 1 ? "s" : "", " in your tracker have no matching race in civicAPI's data:"), " ", unmatchedPoll.slice(0, 8).map((p) => `${p.state} \u2014 ${p.raceName}`).join(" \xB7 "), unmatchedPoll.length > 8 ? ` \xB7 +${unmatchedPoll.length - 8} more` : "", /* @__PURE__ */ React.createElement("div", { style: { color: T.text3, marginTop: 4 } }, 'Matching uses state + office + district number, so "PA SD 24", "SD-24", and "State Senate District 24" all work. Use "U.S. Senate" or "Governor" for statewide, "CD 8" for House, "Prop 36" for measures. Make sure the state is spelled out or a 2-letter code.')), pollTable.length > 0 && !acc.rows.length && /* @__PURE__ */ React.createElement("div", { style: { padding: "14px 18px", color: T.text2, fontSize: 13, background: T.card, border: `1px solid ${T.border}`, borderRadius: 10 } }, /* @__PURE__ */ React.createElement("b", null, pollTable.length, " polls loaded"), " \xB7 ", pollTable.filter((x) => x.status === "matched").length, " matched to a live race", pollTable.some((x) => x.status === "names") ? ` \xB7 ${pollTable.filter((x) => x.status === "names").length} race found but a candidate name differs` : "", unmatchedPoll.length ? ` \xB7 ${unmatchedPoll.length} not in civicAPI` : "", ". The scorecard fills in once votes are counted on election night."), pollTable.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, overflow: "hidden" } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", alignItems: "center", gap: 8, padding: "12px 16px", borderBottom: `1px solid ${T.border}` } }, /* @__PURE__ */ React.createElement("span", { style: { fontFamily: SANS, fontSize: 11, fontWeight: 700, letterSpacing: 2, color: T.goldText, textTransform: "uppercase", marginRight: "auto" } }, "Your polls \xB7 ", pollTable.length), /* @__PURE__ */ React.createElement("span", { style: { fontSize: 11, color: T.text3 } }, "Sort"), /* @__PURE__ */ React.createElement("select", { value: pollCol ? "" : pollSort, onChange: (e) => {
+    setPollCol(null), setPollSort(e.target.value);
+  }, style: { fontFamily: SANS, fontSize: 12, padding: "4px 8px", borderRadius: 6, border: `1px solid ${T.border2}`, background: "#fff" } }, pollCol && /* @__PURE__ */ React.createElement("option", { value: "" }, "By column"), /* @__PURE__ */ React.createElement("option", { value: "state" }, "By state"), /* @__PURE__ */ React.createElement("option", { value: "status" }, "Problems first"), /* @__PURE__ */ React.createElement("option", { value: "close" }, "Closest poll first"), /* @__PURE__ */ React.createElement("option", { value: "err" }, "Biggest miss first"))), (pollCmp[2024] || pollCmp[2022]) && /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: "6px 22px", padding: "0 18px 12px", fontSize: 12, color: T.text2 } }, [["2024", "Trump\u2013Harris 2024 (statewide or district; a legislative seat's own 2024 race)"], ["2022", "the same office in 2022"]].map(([y, what]) => {
     const c = pollCmp[y];
     if (!c) return null;
     const d = c.avg;
     return /* @__PURE__ */ React.createElement("span", { key: y, title: `Average of (our poll D\u2212R) \u2212 (${what}) over ${c.n} Democrat-vs-Republican polls` }, "vs ", y, ": our polls run ", /* @__PURE__ */ React.createElement("b", { style: { color: Math.abs(d) < 0.05 ? T.text : d > 0 ? T.demB : T.repB } }, Math.abs(d) < 0.05 ? "even" : `${Math.abs(d).toFixed(1)} pts more ${d > 0 ? "Democratic" : "Republican"}`), " ", /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, "(", c.n, " poll", c.n === 1 ? "" : "s", ")"));
-  })), /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { color: T.text3, textAlign: "left" } }, ["State", "Race", "Poll", "Poll margin", "Result", "Result margin", "2024", "2022", "Poll miss", "In", "Status"].map((h) => /* @__PURE__ */ React.createElement("th", { key: h, title: h === "2024" ? "Trump\u2013Harris 2024 in the state or district \xB7 legislative seats: that seat's own 2024 race \xB7 hover a cell for details" : h === "2022" ? "The same office in 2022 \xB7 hover a cell for details" : void 0, style: { padding: "8px 10px", fontWeight: 600, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", borderBottom: `1px solid ${T.border}`, whiteSpace: "nowrap" } }, h)))), /* @__PURE__ */ React.createElement("tbody", null, [...pollTable].sort((a, b) => {
+  })), /* @__PURE__ */ React.createElement("div", { style: { overflowX: "auto" } }, /* @__PURE__ */ React.createElement("table", { style: { width: "100%", borderCollapse: "collapse", fontSize: 12 } }, /* @__PURE__ */ React.createElement("thead", null, /* @__PURE__ */ React.createElement("tr", { style: { color: T.text3, textAlign: "left" } }, ["State", "Race", "Poll", "Poll margin", "Result", "Result margin", "2024", "2022", "Poll miss", "In", "Status"].map((h) => {
+    const k = POLL_COLS[h], on = k && pollCol && pollCol.k === k, tip = h === "2024" ? "Trump\u2013Harris 2024 in the state or district \xB7 legislative seats: that seat's own 2024 race \xB7 hover a cell for details" : h === "2022" ? "The same office in 2022 \xB7 hover a cell for details" : void 0;
+    return /* @__PURE__ */ React.createElement(
+      "th",
+      {
+        key: h,
+        title: k ? `${tip ? tip + " \xB7 " : ""}Click to sort${k === "err" || k === "in" ? "" : " \u2014 Democratic margin first, click again to flip"}` : tip,
+        onClick: k ? () => pollColClick(k) : void 0,
+        style: { padding: "8px 10px", fontWeight: 600, fontSize: 10, letterSpacing: 1, textTransform: "uppercase", borderBottom: `1px solid ${on ? T.goldText : T.border}`, whiteSpace: "nowrap", cursor: k ? "pointer" : "default", color: on ? T.goldText : void 0, userSelect: "none" }
+      },
+      h,
+      k ? /* @__PURE__ */ React.createElement("span", { style: { marginLeft: 4, opacity: on ? 1 : 0.35 } }, on ? pollCol.dir === "asc" ? "\u25B2" : "\u25BC" : "\u21C5") : null
+    );
+  }))), /* @__PURE__ */ React.createElement("tbody", null, [...pollTable].sort(pollCol ? pollColCmp : (a, b) => {
     var _a, _b;
     return pollSort === "status" ? { missing: 0, names: 1, matched: 2 }[a.status] - { missing: 0, names: 1, matched: 2 }[b.status] || a.p.abbr.localeCompare(b.p.abbr) : pollSort === "close" ? Math.abs(a.pm) - Math.abs(b.pm) : pollSort === "err" ? Math.abs((_a = b.err) != null ? _a : -1) - Math.abs((_b = a.err) != null ? _b : -1) : a.p.abbr.localeCompare(b.p.abbr) || a.i - b.i;
   }).map((x) => {
