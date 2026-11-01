@@ -5,12 +5,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Utah Election Night</title><meta name="robots" content="noindex, nofollow">
-<meta name="build" content="20261101002717">
+<meta name="build" content="20261101002822">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261101002717"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261101002822"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -1958,12 +1958,12 @@
           caption && /* @__PURE__ */ React.createElement("text", { x: cx, y: cy + 14, textAnchor: "middle", fontFamily: SANS, fontSize: "10", fill: T.text3 }, caption)
         ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "2px 10px", fontSize: 10.5, lineHeight: 1.5 } }, segs.map((sg, i) => /* @__PURE__ */ React.createElement("span", { key: i, style: { display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" } }, /* @__PURE__ */ React.createElement("span", { style: { width: 9, height: 9, borderRadius: 2, background: sg.c, display: "inline-block", flexShrink: 0 } }), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, sg.label), /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: sg.c2 || T.text2 } }, F(sg.n))))));
       }
-      function StackedGauge({ rings, fmt }) {
+      function StackedGauge({ rings, fmt, center }) {
         const F = fmt || ((n) => n), W = 250, H = 150, cx = 125, cy = 132, TH = 12, GAP2 = 4, R0 = 94, polar = (r, deg) => [cx + r * Math.cos(Math.PI * deg / 180), cy - r * Math.sin(Math.PI * deg / 180)], arc = (r, a0, a1) => {
           const [x0, y0] = polar(r, a0), [x1, y1] = polar(r, a1);
           return `M${x0.toFixed(1)},${y0.toFixed(1)} A${r},${r} 0 0 ${a1 < a0 ? 1 : 0} ${x1.toFixed(1)},${y1.toFixed(1)}`;
         };
-        return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(
+        return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4, width: "100%" } }, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", width: "100%", maxWidth: 380, display: "flex", justifyContent: "center" } }, center && center.length > 0 && /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: 0, right: 0, bottom: "4%", display: "flex", flexDirection: "column", alignItems: "center", gap: 1, pointerEvents: "none" } }, center.map((c, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", alignItems: "baseline", gap: 5, lineHeight: 1.1 } }, /* @__PURE__ */ React.createElement("span", { style: { fontSize: 10.5, color: T.text3 } }, c.label), /* @__PURE__ */ React.createElement("span", { style: { fontFamily: MONO, fontSize: i ? 15 : 18, fontWeight: 700, color: c.color } }, c.value)))), /* @__PURE__ */ React.createElement(
           "svg",
           {
             viewBox: `22 28 ${W - 44} ${H - 30}`,
@@ -1981,7 +1981,7 @@
               return sg.n <= 0 ? null : /* @__PURE__ */ React.createElement("path", { key: i, d: arc(R - TH / 2, a0, a1), stroke: sg.c, strokeWidth: TH, fill: "none", strokeLinecap: "butt" });
             }));
           })
-        ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 2, width: "100%" } }, rings.map((ring, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", flexWrap: "wrap", gap: "0 8px", justifyContent: "center", fontSize: 11, alignItems: "baseline" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: T.text2 } }, ring.label), ring.segs.filter((x) => x.n > 0).map((sg, j) => /* @__PURE__ */ React.createElement("span", { key: j, style: { display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" } }, /* @__PURE__ */ React.createElement("span", { style: { width: 8, height: 8, borderRadius: 2, background: sg.c, display: "inline-block" } }), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, sg.label), /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: sg.c2 || T.text2 } }, F(sg.n))))))));
+        )), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 2, width: "100%" } }, rings.map((ring, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", flexWrap: "wrap", gap: "0 8px", justifyContent: "center", fontSize: 11, alignItems: "baseline" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: T.text2 } }, ring.label), ring.segs.filter((x) => x.n > 0).map((sg, j) => /* @__PURE__ */ React.createElement("span", { key: j, style: { display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" } }, /* @__PURE__ */ React.createElement("span", { style: { width: 8, height: 8, borderRadius: 2, background: sg.c, display: "inline-block" } }), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, sg.label), /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: sg.c2 || T.text2 } }, F(sg.n))))))));
       }
       function ChamberNow({ label, tally, big }) {
         const { a, b, aLead, bLead, none, seats, majority, majorityB } = tally, out = none + aLead + bLead, status = majority ? a >= majority ? ["Democrats have a majority", T.demB] : b >= majorityB ? ["Republicans have a majority", T.repB] : [/* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { color: T.demB } }, "Democrats need ", /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO } }, Math.max(0, majority - a))), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, " \xB7 "), /* @__PURE__ */ React.createElement("span", { style: { color: T.repB } }, "Republicans need ", /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO } }, Math.max(0, majorityB - b)))), T.text2] : a + b ? [`${a + b} of ${seats} called`, a > b ? T.demB : b > a ? T.repB : T.text2] : ["None called yet", T.text3], X = (k) => seats ? `${Math.max(0, Math.min(100, 100 * k / seats))}%` : "0%", num = (k, c, lab) => /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: MONO, fontSize: big ? 30 : 24, fontWeight: 700, color: c, lineHeight: 1.1 } }, k), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, fontWeight: 700, letterSpacing: 1.2, color: T.text3, textTransform: "uppercase" } }, lab)), segs = [
@@ -2280,11 +2280,17 @@
             { label: "No", n: has ? Math.round(nn * 10) : 0, c: T.no, c2: T.no }
           ];
         }, measDialStack = () => {
-          const rings = meas.map((x) => ({ label: String(x.race.name).replace(/^Utah\s+/, ""), segs: measSegs(x) }));
-          return rings.length ? /* @__PURE__ */ React.createElement(StackedGauge, { rings, fmt: (v) => `${(v / 10).toFixed(0)}%` }) : null;
+          const rings = meas.map((x) => ({ label: String(x.race.name).replace(/^Utah\s+/, ""), segs: measSegs(x) })), center = meas.map((x) => {
+            const r = x.race, has = r.v1 + r.v2 > 0, y = r.a1, nn = r.a2;
+            return { label: String(r.name).replace(/^Utah\s+/, "").replace(/Constitutional Amendment\s+/i, "Amend. "), value: has ? y >= nn ? `Yes ${y.toFixed(0)}%` : `No ${nn.toFixed(0)}%` : "\u2014", color: has ? y >= nn ? T.yes : T.no : T.text3 };
+          });
+          return rings.length ? /* @__PURE__ */ React.createElement(StackedGauge, { rings, fmt: (v) => `${(v / 10).toFixed(0)}%`, center }) : null;
         }, legDial = () => {
-          const sen = chamber("State Senate"), hou = chamber("State House"), rings = [];
-          return sen.length && rings.push({ label: `Senate \xB7 ${sen.length}`, segs: legSegs(sen) }), hou.length && rings.push({ label: `House \xB7 ${hou.length}`, segs: legSegs(hou) }), rings.length ? /* @__PURE__ */ React.createElement(StackedGauge, { rings }) : null;
+          const sen = chamber("State Senate"), hou = chamber("State House"), rings = [], center = [], lead = (list) => {
+            const d = list.filter((x) => x.race.called && leaderOf(x.race) === "D").length, r = list.filter((x) => x.race.called && leaderOf(x.race) === "R").length;
+            return { value: `${d}\u2013${r}`, color: d > r ? T.demB : r > d ? T.repB : T.text3 };
+          };
+          return sen.length && (rings.push({ label: `Senate \xB7 ${sen.length}`, segs: legSegs(sen) }), center.push({ label: "Senate", ...lead(sen) })), hou.length && (rings.push({ label: `House \xB7 ${hou.length}`, segs: legSegs(hou) }), center.push({ label: "House", ...lead(hou) })), rings.length ? /* @__PURE__ */ React.createElement(StackedGauge, { rings, center }) : null;
         }, chamberDial = (label, list) => {
           if (!list.length) return null;
           const c = (p) => list.filter((x) => x.race.called && leaderOf(x.race) === p).length, l = (p) => list.filter((x) => !x.race.called && counted2(x) && leaderOf(x.race) === p).length, cd = c("D"), cr = c("R"), ld = l("D"), lr = l("R"), none = Math.max(0, list.length - cd - cr - ld - lr), segs = [
