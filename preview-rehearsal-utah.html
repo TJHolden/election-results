@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Utah Election Night</title><meta name="robots" content="noindex, nofollow">
-<meta name="build" content="20261101085606">
+<meta name="build" content="20261101085622">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261101085606"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261101085622"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -2416,9 +2416,10 @@
           return /* @__PURE__ */ React.createElement("div", { key: label, style: { marginTop: 10 } }, /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, fontWeight: 600, textAlign: "center" } }, label, " ", /* @__PURE__ */ React.createElement("span", { style: { color: T.text3, fontWeight: 400 } }, "\xB7 ", list.length, " ", list.length === 1 ? "seat" : "seats")), /* @__PURE__ */ React.createElement(PropGauge, { segs }));
         }, houseDial = (x) => {
           const r = x.race, has = counted2(x), d = r.p1 === "D" ? r.a1 : r.p2 === "D" ? r.a2 : 0, rr = r.p1 === "R" ? r.a1 : r.p2 === "R" ? r.a2 : 0, segs = [
-            { label: "D", n: has ? Math.round(d * 10) : 0, c: T.dem, c2: T.demB },
-            { label: "Not counted", n: has ? Math.max(0, 1e3 - Math.round(d * 10) - Math.round(rr * 10)) : 1e3, c: T.border2, c2: T.text3 },
-            { label: "R", n: has ? Math.round(rr * 10) : 0, c: T.rep, c2: T.repB }
+            { label: "D", n: has ? d * 10 : 0, c: T.dem, c2: T.demB },
+            // tenths, unrounded — the legend rounds once
+            { label: "Not counted", n: has ? Math.max(0, 1e3 - d * 10 - rr * 10) : 1e3, c: T.border2, c2: T.text3 },
+            { label: "R", n: has ? rr * 10 : 0, c: T.rep, c2: T.repB }
           ];
           return /* @__PURE__ */ React.createElement("div", { key: r.id, style: { background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 12px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 14, fontWeight: 700, textAlign: "center" } }, r.name.replace(/^US House/, "U.S. House")), /* @__PURE__ */ React.createElement(
             PropGauge,
