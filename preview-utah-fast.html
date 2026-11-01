@@ -5,12 +5,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Utah Election Night</title><meta name="robots" content="noindex, nofollow">
-<meta name="build" content="20261101001105">
+<meta name="build" content="20261101001206">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261101001105"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261101001206"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -1958,6 +1958,31 @@
           caption && /* @__PURE__ */ React.createElement("text", { x: cx, y: cy + 14, textAnchor: "middle", fontFamily: SANS, fontSize: "10", fill: T.text3 }, caption)
         ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "2px 10px", fontSize: 10.5, lineHeight: 1.5 } }, segs.map((sg, i) => /* @__PURE__ */ React.createElement("span", { key: i, style: { display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" } }, /* @__PURE__ */ React.createElement("span", { style: { width: 9, height: 9, borderRadius: 2, background: sg.c, display: "inline-block", flexShrink: 0 } }), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, sg.label), /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: sg.c2 || T.text2 } }, F(sg.n))))));
       }
+      function StackedGauge({ rings }) {
+        const polar = (r, deg) => [125 + r * Math.cos(Math.PI * deg / 180), 132 - r * Math.sin(Math.PI * deg / 180)], arc = (r, a0, a1) => {
+          const [x0, y0] = polar(r, a0), [x1, y1] = polar(r, a1);
+          return `M${x0.toFixed(1)},${y0.toFixed(1)} A${r},${r} 0 0 ${a1 < a0 ? 1 : 0} ${x1.toFixed(1)},${y1.toFixed(1)}`;
+        };
+        return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(
+          "svg",
+          {
+            viewBox: "0 0 250 150",
+            style: { width: "100%", maxWidth: 210, height: "auto", display: "block" },
+            role: "img",
+            "aria-label": rings.map((r) => `${r.label}: ${r.segs.map((x) => x.label + " " + x.n).join(", ")}`).join(" \xB7 ")
+          },
+          rings.map((ring, ri) => {
+            const R = 94 - ri * 16, tot = ring.segs.reduce((a, x) => a + x.n, 0) || 1;
+            let acc = 0;
+            return /* @__PURE__ */ React.createElement("g", { key: ri }, ring.segs.map((sg, i) => {
+              const a0 = 180 - 180 * (acc / tot);
+              acc += sg.n;
+              const a1 = 180 - 180 * (acc / tot);
+              return sg.n <= 0 ? null : /* @__PURE__ */ React.createElement("path", { key: i, d: arc(R - 12 / 2, a0, a1), stroke: sg.c, strokeWidth: 12, fill: "none", strokeLinecap: "butt" });
+            }));
+          })
+        ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 2, width: "100%" } }, rings.map((ring, i) => /* @__PURE__ */ React.createElement("div", { key: i, style: { display: "flex", flexWrap: "wrap", gap: "0 8px", justifyContent: "center", fontSize: 11, alignItems: "baseline" } }, /* @__PURE__ */ React.createElement("span", { style: { fontWeight: 700, color: T.text2 } }, ring.label), ring.segs.filter((x) => x.n > 0).map((sg, j) => /* @__PURE__ */ React.createElement("span", { key: j, style: { display: "inline-flex", alignItems: "center", gap: 3, whiteSpace: "nowrap" } }, /* @__PURE__ */ React.createElement("span", { style: { width: 8, height: 8, borderRadius: 2, background: sg.c, display: "inline-block" } }), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, sg.label), /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: sg.c2 || T.text2 } }, sg.n)))))));
+      }
       function ChamberNow({ label, tally, big }) {
         const { a, b, aLead, bLead, none, seats, majority, majorityB } = tally, out = none + aLead + bLead, status = majority ? a >= majority ? ["Democrats have a majority", T.demB] : b >= majorityB ? ["Republicans have a majority", T.repB] : [/* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("span", { style: { color: T.demB } }, "Democrats need ", /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO } }, Math.max(0, majority - a))), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, " \xB7 "), /* @__PURE__ */ React.createElement("span", { style: { color: T.repB } }, "Republicans need ", /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO } }, Math.max(0, majorityB - b)))), T.text2] : a + b ? [`${a + b} of ${seats} called`, a > b ? T.demB : b > a ? T.repB : T.text2] : ["None called yet", T.text3], X = (k) => seats ? `${Math.max(0, Math.min(100, 100 * k / seats))}%` : "0%", num = (k, c, lab) => /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: MONO, fontSize: big ? 30 : 24, fontWeight: 700, color: c, lineHeight: 1.1 } }, k), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, fontWeight: 700, letterSpacing: 1.2, color: T.text3, textTransform: "uppercase" } }, lab)), segs = [
           { label: "Won D", n: a, c: T.dem, c2: T.demB },
@@ -2243,6 +2268,18 @@
         }, measDial = (x) => {
           const r = x.race, has = x.race.v1 + x.race.v2 > 0, y = r.a1, n = r.a2, segs = [{ label: "Yes", n: has ? Math.round(y * 10) : 0, c: T.yes, c2: T.yes }, { label: "Undecided", n: has ? Math.max(0, 1e3 - Math.round(y * 10) - Math.round(n * 10)) : 1e3, c: T.border2, c2: T.text3 }, { label: "No", n: has ? Math.round(n * 10) : 0, c: T.no, c2: T.no }];
           return /* @__PURE__ */ React.createElement("div", { key: r.id, style: { background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "12px 16px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 15, fontWeight: 700, textAlign: "center" } }, r.name), /* @__PURE__ */ React.createElement(PropGauge, { segs, fmt: (v) => `${(v / 10).toFixed(0)}%`, endL: has ? `${y.toFixed(1)}%` : "", endR: has ? `${n.toFixed(1)}%` : "", endLc: T.yes, endRc: T.no }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: T.text3, textAlign: "center" } }, has ? x.expIn != null ? `~${x.expIn}% of the expected vote counted` : `${r.rpt}% reporting` : "No votes counted yet"));
+        }, legSegs = (list) => {
+          const c = (p) => list.filter((x) => x.race.called && leaderOf(x.race) === p).length, l = (p) => list.filter((x) => !x.race.called && counted2(x) && leaderOf(x.race) === p).length, cd = c("D"), cr = c("R"), ld = l("D"), lr = l("R");
+          return [
+            { label: "Won D", n: cd, c: T.dem, c2: T.demB },
+            { label: "Leading D", n: ld, c: T.dem + "77", c2: T.demB },
+            { label: "Not called", n: Math.max(0, list.length - cd - cr - ld - lr), c: T.border2, c2: T.text3 },
+            { label: "Leading R", n: lr, c: T.rep + "77", c2: T.repB },
+            { label: "Won R", n: cr, c: T.rep, c2: T.repB }
+          ];
+        }, legDial = () => {
+          const sen = chamber("State Senate"), hou = chamber("State House"), rings = [];
+          return sen.length && rings.push({ label: `Senate \xB7 ${sen.length}`, segs: legSegs(sen) }), hou.length && rings.push({ label: `House \xB7 ${hou.length}`, segs: legSegs(hou) }), rings.length ? /* @__PURE__ */ React.createElement(StackedGauge, { rings }) : null;
         }, chamberDial = (label, list) => {
           if (!list.length) return null;
           const c = (p) => list.filter((x) => x.race.called && leaderOf(x.race) === p).length, l = (p) => list.filter((x) => !x.race.called && counted2(x) && leaderOf(x.race) === p).length, cd = c("D"), cr = c("R"), ld = l("D"), lr = l("R"), none = Math.max(0, list.length - cd - cr - ld - lr), segs = [
@@ -2261,7 +2298,7 @@
           ], d = r.p1 === "D" ? r.a1 : r.a2, rr = r.p1 === "D" ? r.a2 : r.a1;
           return /* @__PURE__ */ React.createElement("div", { key: r.id, style: { background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "10px 12px" } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 14, fontWeight: 700, textAlign: "center" } }, r.name.replace(/^US House/, "U.S. House")), /* @__PURE__ */ React.createElement(PropGauge, { segs, fmt: (v) => `${(v / 10).toFixed(0)}%`, endL: has ? `${d.toFixed(1)}%` : "", endR: has ? `${rr.toFixed(1)}%` : "", endLc: T.demB, endRc: T.repB }), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3, textAlign: "center" } }, has ? x.expIn != null ? `~${x.expIn}% counted` : `${r.rpt}% reporting` : "No votes yet"));
         };
-        return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 4 } }, [["bars", "Bars"], ["dial", "Dials"]].map(([k, lab]) => /* @__PURE__ */ React.createElement(Pill, { key: k, active: gv === k, onClick: () => setGv(k) }, lab))), meas.length > 0 && /* @__PURE__ */ React.createElement("div", null, head("Ballot measures"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: narrow ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 } }, meas.map(gv === "dial" ? measDial : measure))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: narrow ? "1fr" : "minmax(0,1fr) minmax(0,1fr)", gap: 12 } }, chamber("State House").length || chamber("State Senate").length ? /* @__PURE__ */ React.createElement("div", { style: card }, head("Legislature"), gv === "dial" ? chamberDial("State House", chamber("State House")) : seatBar("State House", chamber("State House")), gv === "dial" ? chamberDial("State Senate", chamber("State Senate")) : seatBar("State Senate", chamber("State Senate"))) : null, house.length > 0 && /* @__PURE__ */ React.createElement("div", null, head("U.S. House"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 } }, house.map(gv === "dial" ? houseDial : hs)))));
+        return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 12 } }, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "flex-end", gap: 4 } }, [["bars", "Bars"], ["dial", "Dials"]].map(([k, lab]) => /* @__PURE__ */ React.createElement(Pill, { key: k, active: gv === k, onClick: () => setGv(k) }, lab))), meas.length > 0 && /* @__PURE__ */ React.createElement("div", null, head("Ballot measures"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: narrow ? "1fr" : "repeat(2,minmax(0,1fr))", gap: 12 } }, meas.map(gv === "dial" ? measDial : measure))), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: narrow ? "1fr" : "minmax(0,1fr) minmax(0,1fr)", gap: 12 } }, chamber("State House").length || chamber("State Senate").length ? /* @__PURE__ */ React.createElement("div", { style: card }, head("Legislature"), gv === "dial" ? legDial() : /* @__PURE__ */ React.createElement(React.Fragment, null, seatBar("State House", chamber("State House")), seatBar("State Senate", chamber("State Senate")))) : null, house.length > 0 && /* @__PURE__ */ React.createElement("div", null, head("U.S. House"), /* @__PURE__ */ React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(2,minmax(0,1fr))", gap: 8 } }, house.map(gv === "dial" ? houseDial : hs)))));
       }
       function SbaTab({ matches, hist, calledAt }) {
         const narrow = React.useContext(NarrowCtx), est = React.useContext(EstCtx), [flt, setFlt] = useState("all"), [q, setQ] = useState(""), [open, setOpen] = useState(null), [stF, setStF] = useState("all"), rows = useMemo(() => matches.map((m) => {
