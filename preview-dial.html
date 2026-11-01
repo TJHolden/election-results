@@ -5,12 +5,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Election Night Live Results</title>
-<meta name="build" content="20261031222803">
+<meta name="build" content="20261031222918">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261031222803"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261031222918"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -2222,7 +2222,7 @@ function ChamberNow({ label, tally, big }) {
     { label: "Leading R", n: bLead, c: T.rep + "77", c2: T.repB },
     { label: "Won R", n: b, c: T.rep, c2: T.repB }
   ];
-  return /* @__PURE__ */ React.createElement("div", { style: { background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SANS, fontSize: 11, fontWeight: 700, letterSpacing: 2, color: T.text3, textTransform: "uppercase", textAlign: "center" } }, label), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 } }, num(a, T.demB, "Dems"), num(out, T.goldText, "Not called"), num(b, T.repB, "Reps")), /* @__PURE__ */ React.createElement(PropGauge, { segs, marker: majority ? seats - majority : null, markerLabel: majority ? `${majority} to win` : null }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: status[1] } }, status[0]), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: T.text3, marginTop: 2 } }, seats, " seats \xB7 ", out, " not yet called")));
+  return /* @__PURE__ */ React.createElement("div", { style: { background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 10, minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SANS, fontSize: 11, fontWeight: 700, letterSpacing: 2, color: T.text3, textTransform: "uppercase", textAlign: "center" } }, label), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 } }, num(a, T.demB, "Dems"), num(out, T.goldText, "Not called"), num(b, T.repB, "Reps")), /* @__PURE__ */ React.createElement(PropGauge, { segs, marker: majority || null, markerLabel: majority ? `${majority} to win` : null }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 16, fontWeight: 700, color: status[1] } }, status[0]), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: T.text3, marginTop: 2 } }, seats, " seats \xB7 ", out, " not yet called")));
 }
 function ChamberNowBar({ label, tally }) {
   const { a, b, seats, majority } = tally, out = Math.max(0, seats - a - b), X = (k) => seats ? `${Math.max(0, Math.min(100, 100 * k / seats))}%` : "0%";
