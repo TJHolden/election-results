@@ -5,12 +5,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Utah Election Night</title><meta name="robots" content="noindex, nofollow">
-<meta name="build" content="20261101002011">
+<meta name="build" content="20261101002514">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261101002011"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261101002514"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -2052,8 +2052,8 @@
         return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(
           "svg",
           {
-            viewBox: `0 0 ${W} ${H}`,
-            style: { width: "100%", maxWidth: 210, height: "auto", display: "block" },
+            viewBox: `4 12 ${W - 8} ${H - 14}`,
+            style: { width: "100%", maxWidth: 260, height: "auto", display: "block" },
             role: "img",
             "aria-label": segs.map((x) => `${x.label} ${x.n}`).join(", ")
           },
@@ -2076,8 +2076,8 @@
         return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(
           "svg",
           {
-            viewBox: `0 0 ${W} ${H}`,
-            style: { width: "100%", maxWidth: 300, height: "auto", display: "block" },
+            viewBox: `22 28 ${W - 44} ${H - 30}`,
+            style: { width: "100%", maxWidth: 380, height: "auto", display: "block" },
             role: "img",
             "aria-label": rings.map((r) => `${r.label}: ${r.segs.map((x) => x.label + " " + x.n).join(", ")}`).join(" \xB7 ")
           },
