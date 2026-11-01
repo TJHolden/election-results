@@ -5,12 +5,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Election Night Live Results</title>
-<meta name="build" content="20261031234232">
+<meta name="build" content="20261031234607">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261031234232"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261031234607"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -2259,9 +2259,9 @@ function ChamberCard({ label, sp, majority, majNote, total }) {
 function SnapChart({ snaps, k, majority, total }) {
   const pts = snaps.filter((s) => s[k]);
   if (pts.length < 2) return /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12, color: T.text3, padding: "18px 0" } }, "The lines fill in as the night goes on (a point every few minutes while the count moves).");
-  const hasR = pts.some((s) => s[k].rmed != null), W = 600, H = 170, pl = 34, pr = 8, pt = 10, pb = 22, t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1, vals = pts.flatMap((s) => {
+  const rPts = pts.filter((s) => s[k].rlo != null && s[k].rhi != null && s[k].rmed != null), hasR = rPts.length >= 2, W = 600, H = 170, pl = 34, pr = 8, pt = 10, pb = 22, t0 = pts[0].t, t1 = pts[pts.length - 1].t || t0 + 1, vals = pts.flatMap((s) => {
     const v = s[k], a = [v.lo, v.hi];
-    return hasR && v.rlo != null && a.push(v.rlo, v.rhi), a;
+    return v.rlo != null && a.push(v.rlo, v.rhi), a;
   });
   let y0 = Math.min(...vals) - 3, y1 = Math.max(...vals) + 3;
   if (y1 - y0 < 10) {
@@ -2270,7 +2270,10 @@ function SnapChart({ snaps, k, majority, total }) {
   }
   const span = y1 - y0, inView = majority != null && majority > y0 - span && majority < y1 + span;
   inView && (y0 = Math.min(y0, majority - 2), y1 = Math.max(y1, majority + 2));
-  const majOff = majority != null && !inView ? majority > y1 ? "above" : "below" : null, X = (t) => pl + (W - pl - pr) * (t1 > t0 ? (t - t0) / (t1 - t0) : 1), Y = (v) => pt + (H - pt - pb) * (1 - (v - y0) / (y1 - y0)), band = (loK, hiK) => pts.map((s) => `${X(s.t)},${Y(s[k][hiK])}`).join(" ") + " " + [...pts].reverse().map((s) => `${X(s.t)},${Y(s[k][loK])}`).join(" "), line = (medK) => pts.map((s) => `${X(s.t)},${Y(s[k][medK])}`).join(" "), tl = (t) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), ticks = [y0, (y0 + y1) / 2, y1].map(Math.round), last = pts[pts.length - 1][k];
+  const majOff = majority != null && !inView ? majority > y1 ? "above" : "below" : null, X = (t) => pl + (W - pl - pr) * (t1 > t0 ? (t - t0) / (t1 - t0) : 1), Y = (v) => pt + (H - pt - pb) * (1 - (v - y0) / (y1 - y0)), band = (loK, hiK, src) => {
+    const a = src || pts;
+    return a.map((s) => `${X(s.t)},${Y(s[k][hiK])}`).join(" ") + " " + [...a].reverse().map((s) => `${X(s.t)},${Y(s[k][loK])}`).join(" ");
+  }, line = (medK, src) => (src || pts).map((s) => `${X(s.t)},${Y(s[k][medK])}`).join(" "), tl = (t) => new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), ticks = [y0, (y0 + y1) / 2, y1].map(Math.round), last = pts[pts.length - 1][k], lastR = rPts.length ? rPts[rPts.length - 1][k].rmed : null;
   return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement(
     "svg",
     {
@@ -2281,16 +2284,16 @@ function SnapChart({ snaps, k, majority, total }) {
     },
     ticks.map((v) => /* @__PURE__ */ React.createElement("g", { key: v }, /* @__PURE__ */ React.createElement("line", { x1: pl, x2: W - pr, y1: Y(v), y2: Y(v), stroke: T.border, strokeWidth: "1" }), /* @__PURE__ */ React.createElement("text", { x: pl - 6, y: Y(v) + 4, textAnchor: "end", fontSize: "10", fill: T.text3, fontFamily: "DM Mono, monospace" }, v))),
     majority && majority > y0 && majority < y1 && /* @__PURE__ */ React.createElement("g", null, /* @__PURE__ */ React.createElement("line", { x1: pl, x2: W - pr, y1: Y(majority), y2: Y(majority), stroke: T.text, strokeDasharray: "4 3", strokeWidth: "1.2" }), /* @__PURE__ */ React.createElement("text", { x: W - pr, y: Y(majority) - 4, textAnchor: "end", fontSize: "10", fontWeight: "700", fill: T.text2 }, majority, " to win")),
-    hasR && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("polygon", { points: band("rlo", "rhi"), fill: T.rep, opacity: "0.2" }), /* @__PURE__ */ React.createElement("polyline", { points: pts.map((x) => `${X(x.t)},${Y(x[k].rhi)}`).join(" "), fill: "none", stroke: T.rep, strokeWidth: ".9", opacity: ".45" }), /* @__PURE__ */ React.createElement("polyline", { points: pts.map((x) => `${X(x.t)},${Y(x[k].rlo)}`).join(" "), fill: "none", stroke: T.rep, strokeWidth: ".9", opacity: ".45" })),
+    hasR && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("polygon", { points: band("rlo", "rhi", rPts), fill: T.rep, opacity: "0.2" }), /* @__PURE__ */ React.createElement("polyline", { points: rPts.map((x) => `${X(x.t)},${Y(x[k].rhi)}`).join(" "), fill: "none", stroke: T.rep, strokeWidth: ".9", opacity: ".45" }), /* @__PURE__ */ React.createElement("polyline", { points: rPts.map((x) => `${X(x.t)},${Y(x[k].rlo)}`).join(" "), fill: "none", stroke: T.rep, strokeWidth: ".9", opacity: ".45" })),
     /* @__PURE__ */ React.createElement("polygon", { points: band("lo", "hi"), fill: T.dem, opacity: "0.2" }),
     /* @__PURE__ */ React.createElement("polyline", { points: pts.map((x) => `${X(x.t)},${Y(x[k].hi)}`).join(" "), fill: "none", stroke: T.dem, strokeWidth: ".9", opacity: ".45" }),
     /* @__PURE__ */ React.createElement("polyline", { points: pts.map((x) => `${X(x.t)},${Y(x[k].lo)}`).join(" "), fill: "none", stroke: T.dem, strokeWidth: ".9", opacity: ".45" }),
-    hasR && /* @__PURE__ */ React.createElement("polyline", { points: line("rmed"), fill: "none", stroke: T.rep, strokeWidth: "2.2" }),
+    hasR && /* @__PURE__ */ React.createElement("polyline", { points: line("rmed", rPts), fill: "none", stroke: T.rep, strokeWidth: "2.2" }),
     /* @__PURE__ */ React.createElement("polyline", { points: line("med"), fill: "none", stroke: T.dem, strokeWidth: "2.2" }),
     majOff && /* @__PURE__ */ React.createElement("text", { x: W - pr, y: majOff === "above" ? pt + 9 : H - pb - 3, textAnchor: "end", fontSize: "10", fontWeight: "700", fill: T.text3 }, majority, " to win ", majOff === "above" ? "\u2191" : "\u2193"),
     /* @__PURE__ */ React.createElement("text", { x: pl, y: H - 6, fontSize: "10", fill: T.text3 }, tl(t0)),
     /* @__PURE__ */ React.createElement("text", { x: W - pr, y: H - 6, textAnchor: "end", fontSize: "10", fill: T.text3 }, tl(t1))
-  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: "2px 14px", justifyContent: "center", fontSize: 11, marginTop: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 14, height: 3, background: T.dem, display: "inline-block" } }), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, "Democrats"), /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: T.demB } }, last.med)), hasR && /* @__PURE__ */ React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 14, height: 3, background: T.rep, display: "inline-block" } }), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, "Republicans"), /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: T.repB } }, last.rmed)), /* @__PURE__ */ React.createElement("span", { style: { color: T.text4 } }, "shaded = 8 in 10 range")));
+  ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", gap: "2px 14px", justifyContent: "center", fontSize: 11, marginTop: 4 } }, /* @__PURE__ */ React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 14, height: 3, background: T.dem, display: "inline-block" } }), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, "Democrats"), /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: T.demB } }, last.med)), hasR && /* @__PURE__ */ React.createElement("span", { style: { display: "inline-flex", alignItems: "center", gap: 5 } }, /* @__PURE__ */ React.createElement("span", { style: { width: 14, height: 3, background: T.rep, display: "inline-block" } }), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, "Republicans"), /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: T.repB } }, lastR == null ? "\u2014" : lastR)), /* @__PURE__ */ React.createElement("span", { style: { color: T.text4 } }, "shaded = 8 in 10 range")));
 }
 function RangeBar({ lo, hi, m, span = 20 }) {
   const X = (v) => `${50 + 50 * Math.max(-span, Math.min(span, v)) / span}%`, col = m >= 0 ? T.dem : T.rep;
