@@ -5,12 +5,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Election Night Live Results</title>
-<meta name="build" content="20261031223352">
+<meta name="build" content="20261031224645">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261031223352"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261031224645"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -3819,8 +3819,13 @@ function ElectionCommandCenterInner() {
     pollsCloseRef.current = pc2, setPollsClose(pc2);
   }, [races.length]), useEffect(() => {
     if (api !== "live" && api !== "stale") return;
-    const iv = setInterval(() => loadRef.current(void 0, { silent: !0 }), refreshSec * 1e3);
-    return () => clearInterval(iv);
+    let t = null, on = !0;
+    const base = refreshSec * 1e3, next = () => base * (0.85 + Math.random() * 0.3), tick = () => {
+      on && (loadRef.current(void 0, { silent: !0 }), t = setTimeout(tick, next()));
+    };
+    return t = setTimeout(tick, base * (0.5 + Math.random() * 0.5)), () => {
+      on = !1, clearTimeout(t);
+    };
   }, [api, refreshSec]);
   const pollRows = useMemo(() => pollCSV && showPoll ? cleanPollRows(parseCSV(pollCSV)).map((p) => {
     const st = (p.state || "").trim(), abbr = (p.state_abbr || "").toUpperCase() || (st.length === 2 ? st.toUpperCase() : NAME_TO_ABBR[st.toLowerCase()] || ""), key = parseRaceKey(`${p.race_type || ""} ${p.race_name || ""}`, p.race_type) || parseRaceKey(p.race_name, p.race_type);
