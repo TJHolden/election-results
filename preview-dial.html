@@ -5,12 +5,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Election Night Live Results</title>
-<meta name="build" content="20261031234001">
+<meta name="build" content="20261031234036">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261031234001"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261031234036"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -2321,7 +2321,7 @@ function ChamberDial({ label, sp, majority, total, rated, hold }) {
   ), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, CH != null ? (() => {
     const favD = pCtl >= 0.5, fav = favD ? { n: "Democrats", c: T.demB, p: pCtl } : { n: "Republicans", c: T.repB, p: 1 - pCtl };
     return /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 18, fontWeight: 700, color: fav.c } }, fav.n, " ", pct(fav.p), "%"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: T.text3 } }, "chance of winning the majority", CH.exact ? "" : ` \xB7 ${sp.unprojected} seat${sp.unprojected === 1 ? "" : "s"} too early to model`));
-  })() : /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 17, fontWeight: 700, color: sp.dMed > sp.rMed ? T.demB : sp.rMed > sp.dMed ? T.repB : T.text2 } }, sp.dMed > sp.rMed ? "Democrats ahead" : sp.rMed > sp.dMed ? "Republicans ahead" : "Level"), sp.dMed != null && sp.rMed != null && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.text2, marginTop: 4 } }, "Forecast ", /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: T.demB } }, sp.dMed), " D \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: T.repB } }, sp.rMed), " R", /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, " \xB7 ends of the dial show the 8 in 10 range"))));
+  })() : /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 18, fontWeight: 700 } }, /* @__PURE__ */ React.createElement("span", { style: { color: T.demB } }, sp.dMed), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, " D \xB7 "), /* @__PURE__ */ React.createElement("span", { style: { color: T.repB } }, sp.rMed), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, " R")), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: T.text3 } }, "forecast of the ", N, " races up \u2014 no majority to win")), sp.dMed != null && sp.rMed != null && majority && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.text2, marginTop: 4 } }, "Forecast ", /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: T.demB } }, sp.dMed), " D \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: T.repB } }, sp.rMed), " R"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3, marginTop: 2 } }, "ends of the dial show the 8 in 10 range")));
 }
 function ProjectionsTab({ yr26, seatProj, estM, all, model, anyVotes, snaps, onPickState }) {
   const narrow = React.useContext(NarrowCtx), [kind, setKind] = useState("All"), [aggView, setAggView] = useState(() => lsGet("aggView", 400 * 864e5) || "dial");
