@@ -5,12 +5,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Election Night Live Results</title>
-<meta name="build" content="20261031230041">
+<meta name="build" content="20261031230121">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261031230041"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261031230121"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -2185,8 +2185,8 @@ function ResultsDial({ power, title, big }) {
     /* @__PURE__ */ React.createElement("text", { x: W - 4, y: cy + 13, textAnchor: "end", fontFamily: SANS, fontSize: "9", fontWeight: "700", fill: T.text3, letterSpacing: "1" }, "ALL R")
   ), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", marginTop: -6 } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: big ? 20 : 17, fontWeight: 700, color: status[1] } }, status[0]), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: T.text3, marginTop: 2 } }, title, " \xB7 ", N, " seats \xB7 ", out, " not yet called", lead && lead.a + lead.b > 0 ? ` \xB7 ${lead.a + lead.b} leading, still counting` : "")));
 }
-function PropGauge({ segs, marker, markerLabel, caption }) {
-  const tot = segs.reduce((a, x) => a + x.n, 0), polar = (r, deg) => [125 + r * Math.cos(Math.PI * deg / 180), 126 - r * Math.sin(Math.PI * deg / 180)], arc = (r, a0, a1) => {
+function PropGauge({ segs, marker, markerLabel, caption, endL, endR, endLc, endRc }) {
+  const tot = segs.reduce((a, x) => a + x.n, 0), polar = (r, deg) => [125 + r * Math.cos(Math.PI * deg / 180), 124 - r * Math.sin(Math.PI * deg / 180)], arc = (r, a0, a1) => {
     const [x0, y0] = polar(r, a0), [x1, y1] = polar(r, a1), large = Math.abs(a1 - a0) > 180 ? 1 : 0;
     return `M${x0.toFixed(1)},${y0.toFixed(1)} A${r},${r} 0 ${large} ${a1 < a0 ? 1 : 0} ${x1.toFixed(1)},${y1.toFixed(1)}`;
   };
@@ -2196,22 +2196,24 @@ function PropGauge({ segs, marker, markerLabel, caption }) {
     acc += sg.n;
     const f1 = tot ? acc / tot : 0;
     return { ...sg, a0: 180 - 180 * f0, a1: 180 - 180 * f1, deg: 180 * (f1 - f0), mid: 180 - 180 * (f0 + f1) / 2 };
-  }), mk = marker != null && tot ? 180 - 180 * (marker / tot) : null, [mx, my] = mk != null ? polar(103, mk) : [0, 0], [mx2, my2] = mk != null ? polar(76, mk) : [0, 0];
+  }), mk = marker != null && tot ? 180 - 180 * (marker / tot) : null, [mx, my] = mk != null ? polar(101, mk) : [0, 0], [mx2, my2] = mk != null ? polar(74, mk) : [0, 0];
   return /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexDirection: "column", alignItems: "center", gap: 4 } }, /* @__PURE__ */ React.createElement(
     "svg",
     {
-      viewBox: "0 0 250 158",
+      viewBox: "0 0 250 164",
       style: { width: "100%", height: "auto", display: "block" },
       role: "img",
       "aria-label": segs.map((x) => `${x.label} ${x.n}`).join(", ")
     },
-    laid.filter((x) => x.n > 0).map((x, i) => /* @__PURE__ */ React.createElement("path", { key: i, d: arc(96 - 13 / 2, x.a0 - (i ? 0.8 : 0), x.a1 + (i < laid.length - 1 ? 0.8 : 0)), stroke: x.c, strokeWidth: 13, fill: "none", strokeLinecap: "butt" })),
+    laid.filter((x) => x.n > 0).map((x, i) => /* @__PURE__ */ React.createElement("path", { key: i, d: arc(94 - 13 / 2, x.a0 - (i ? 0.8 : 0), x.a1 + (i < laid.length - 1 ? 0.8 : 0)), stroke: x.c, strokeWidth: 13, fill: "none", strokeLinecap: "butt" })),
     laid.filter((x) => x.deg >= 18).map((x, i) => {
-      const [tx, ty] = polar(111, x.mid), anchor = x.mid > 105 ? "end" : x.mid < 75 ? "start" : "middle";
+      const [tx, ty] = polar(109, x.mid), anchor = x.mid > 105 ? "end" : x.mid < 75 ? "start" : "middle";
       return /* @__PURE__ */ React.createElement("text", { key: "l" + i, x: tx, y: ty + (x.mid > 60 && x.mid < 120 ? -1 : 4), textAnchor: anchor, fontFamily: MONO, fontSize: "11", fontWeight: "700", fill: x.c2 || x.c }, x.n);
     }),
-    mk != null && /* @__PURE__ */ React.createElement("g", null, /* @__PURE__ */ React.createElement("line", { x1: mx, y1: my, x2: mx2, y2: my2, stroke: T.text, strokeWidth: "2" }), /* @__PURE__ */ React.createElement("text", { x: 125, y: 120, textAnchor: "middle", fontFamily: SANS, fontSize: "9.5", fontWeight: "700", fill: T.text3, letterSpacing: "1" }, markerLabel)),
-    caption && /* @__PURE__ */ React.createElement("text", { x: 125, y: 140, textAnchor: "middle", fontFamily: SANS, fontSize: "10", fill: T.text3 }, caption)
+    mk != null && /* @__PURE__ */ React.createElement("g", null, /* @__PURE__ */ React.createElement("line", { x1: mx, y1: my, x2: mx2, y2: my2, stroke: T.text, strokeWidth: "2" }), /* @__PURE__ */ React.createElement("text", { x: 125, y: 118, textAnchor: "middle", fontFamily: SANS, fontSize: "9.5", fontWeight: "700", fill: T.text3, letterSpacing: "1" }, markerLabel)),
+    endL && /* @__PURE__ */ React.createElement("text", { x: 33, y: 139, textAnchor: "middle", fontFamily: MONO, fontSize: "12", fontWeight: "700", fill: endLc || T.text2 }, endL),
+    endR && /* @__PURE__ */ React.createElement("text", { x: 217, y: 139, textAnchor: "middle", fontFamily: MONO, fontSize: "12", fontWeight: "700", fill: endRc || T.text2 }, endR),
+    caption && /* @__PURE__ */ React.createElement("text", { x: 125, y: 138, textAnchor: "middle", fontFamily: SANS, fontSize: "10", fill: T.text3 }, caption)
   ), /* @__PURE__ */ React.createElement("div", { style: { display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "2px 10px", fontSize: 10.5, lineHeight: 1.5 } }, segs.map((sg, i) => /* @__PURE__ */ React.createElement("span", { key: i, style: { display: "inline-flex", alignItems: "center", gap: 4, whiteSpace: "nowrap" } }, /* @__PURE__ */ React.createElement("span", { style: { width: 9, height: 9, borderRadius: 2, background: sg.c, display: "inline-block", flexShrink: 0 } }), /* @__PURE__ */ React.createElement("span", { style: { color: T.text3 } }, sg.label), /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: sg.c2 || T.text2 } }, sg.n)))));
 }
 function ChamberNow({ label, tally, big }) {
@@ -2277,7 +2279,18 @@ function ChamberDial({ label, sp, majority, total, rated, hold }) {
     { label: "Lean R", n: R0.leanR, c: T.rep + "77", c2: T.repB },
     { label: "Safe R", n: sR, c: T.rep, c2: T.repB }
   ], rtot = N, num = (k, c, lab) => /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center", minWidth: 0 } }, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: MONO, fontSize: 22, fontWeight: 700, color: c, lineHeight: 1.1 } }, k), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, fontWeight: 700, letterSpacing: 1.2, color: T.text3, textTransform: "uppercase" } }, lab)), pct = (x) => x > 0.999 ? ">99" : x < 1e-3 ? "<1" : (x * 100).toFixed(1), rng = ([x, y]) => x === y ? `${x}` : `${x}\u2013${y}`, dSafe = sp.d[0], rSafe = sp.r[0], tossSeats = Math.max(0, N - dSafe - rSafe), X = (k) => `${Math.max(0, Math.min(100, 100 * k / N))}%`;
-  return /* @__PURE__ */ React.createElement("div", { style: card }, head, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 } }, num(dSafe, T.demB, "Dems"), num(tossSeats, T.goldText, "In play"), num(rSafe, T.repB, "Reps")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", height: 12, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6, overflow: "hidden" }, "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: 0, top: 0, bottom: 0, width: X(dSafe), background: T.dem } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: X(dSafe), top: 0, bottom: 0, width: X(tossSeats), background: T.gold } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", right: 0, top: 0, bottom: 0, width: X(rSafe), background: T.rep } }), majority ? /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: X(majority), top: -2, bottom: -2, width: 2, background: T.text } }) : null), majority ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, fontWeight: 700, letterSpacing: 1.1, color: T.text3, textAlign: "center", marginTop: 3, textTransform: "uppercase" } }, majority, " to win") : null), rtot > 0 && /* @__PURE__ */ React.createElement(PropGauge, { segs, marker: majority || null, markerLabel: majority ? `${majority} to win` : null }), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, pCtl != null ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 18, fontWeight: 700, color: pCtl >= 0.5 ? T.demB : T.repB } }, pct(pCtl), "% D \xB7 ", pct(1 - pCtl), "% R"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: T.text3 } }, "chance of the majority")) : /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 17, fontWeight: 700, color: sp.dMed > sp.rMed ? T.demB : sp.rMed > sp.dMed ? T.repB : T.text2 } }, sp.dMed > sp.rMed ? "Democrats ahead" : sp.rMed > sp.dMed ? "Republicans ahead" : "Level"), sp.dMed != null && sp.rMed != null && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.text2, marginTop: 4 } }, "lands near ", /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: T.demB } }, sp.dMed), " D \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: T.repB } }, sp.rMed), " R"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: T.text3, marginTop: 2 } }, "8 in 10 range ", /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: T.demB } }, rng(sp.d)), " D \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: T.repB } }, rng(sp.r)), " R"), !!sp.unprojected && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3, marginTop: 2 } }, sp.unprojected, " seat", sp.unprojected === 1 ? "" : "s", " the model can't call yet, so no chance of control")));
+  return /* @__PURE__ */ React.createElement("div", { style: card }, head, /* @__PURE__ */ React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 } }, num(dSafe, T.demB, "Dems"), num(tossSeats, T.goldText, "In play"), num(rSafe, T.repB, "Reps")), /* @__PURE__ */ React.createElement("div", null, /* @__PURE__ */ React.createElement("div", { style: { position: "relative", height: 12, background: T.surface, border: `1px solid ${T.border}`, borderRadius: 6, overflow: "hidden" }, "aria-hidden": "true" }, /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: 0, top: 0, bottom: 0, width: X(dSafe), background: T.dem } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: X(dSafe), top: 0, bottom: 0, width: X(tossSeats), background: T.gold } }), /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", right: 0, top: 0, bottom: 0, width: X(rSafe), background: T.rep } }), majority ? /* @__PURE__ */ React.createElement("div", { style: { position: "absolute", left: X(majority), top: -2, bottom: -2, width: 2, background: T.text } }) : null), majority ? /* @__PURE__ */ React.createElement("div", { style: { fontSize: 9.5, fontWeight: 700, letterSpacing: 1.1, color: T.text3, textAlign: "center", marginTop: 3, textTransform: "uppercase" } }, majority, " to win") : null), rtot > 0 && /* @__PURE__ */ React.createElement(
+    PropGauge,
+    {
+      segs,
+      marker: majority || null,
+      markerLabel: majority ? `${majority} to win` : null,
+      endL: rng(sp.d),
+      endR: rng(sp.r),
+      endLc: T.demB,
+      endRc: T.repB
+    }
+  ), /* @__PURE__ */ React.createElement("div", { style: { textAlign: "center" } }, pCtl != null ? /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 18, fontWeight: 700, color: pCtl >= 0.5 ? T.demB : T.repB } }, pct(pCtl), "% D \xB7 ", pct(1 - pCtl), "% R"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11.5, color: T.text3 } }, "chance of the majority")) : /* @__PURE__ */ React.createElement("div", { style: { fontFamily: SERIF, fontSize: 17, fontWeight: 700, color: sp.dMed > sp.rMed ? T.demB : sp.rMed > sp.dMed ? T.repB : T.text2 } }, sp.dMed > sp.rMed ? "Democrats ahead" : sp.rMed > sp.dMed ? "Republicans ahead" : "Level"), sp.dMed != null && sp.rMed != null && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 12.5, color: T.text2, marginTop: 4 } }, "lands near ", /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: T.demB } }, sp.dMed), " D \xB7 ", /* @__PURE__ */ React.createElement("b", { style: { fontFamily: MONO, color: T.repB } }, sp.rMed), " R"), /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3, marginTop: 2 } }, "the figures under each side are the 8 in 10 range"), !!sp.unprojected && /* @__PURE__ */ React.createElement("div", { style: { fontSize: 11, color: T.text3, marginTop: 2 } }, sp.unprojected, " seat", sp.unprojected === 1 ? "" : "s", " the model can't call yet, so no chance of control")));
 }
 function ProjectionsTab({ yr26, seatProj, estM, all, model, anyVotes, snaps, onPickState }) {
   const narrow = React.useContext(NarrowCtx), [kind, setKind] = useState("All"), [aggView, setAggView] = useState(() => lsGet("aggView", 400 * 864e5) || "dial");
