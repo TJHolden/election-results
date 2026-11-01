@@ -5,12 +5,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Election Night Live Results</title>
-<meta name="build" content="20261031234036">
+<meta name="build" content="20261031234101">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261031234036"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261031234101"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -2281,8 +2281,10 @@ function SnapChart({ snaps, k, majority, total }) {
     },
     ticks.map((v) => /* @__PURE__ */ React.createElement("g", { key: v }, /* @__PURE__ */ React.createElement("line", { x1: pl, x2: W - pr, y1: Y(v), y2: Y(v), stroke: T.border, strokeWidth: "1" }), /* @__PURE__ */ React.createElement("text", { x: pl - 6, y: Y(v) + 4, textAnchor: "end", fontSize: "10", fill: T.text3, fontFamily: "DM Mono, monospace" }, v))),
     majority && majority > y0 && majority < y1 && /* @__PURE__ */ React.createElement("g", null, /* @__PURE__ */ React.createElement("line", { x1: pl, x2: W - pr, y1: Y(majority), y2: Y(majority), stroke: T.text, strokeDasharray: "4 3", strokeWidth: "1.2" }), /* @__PURE__ */ React.createElement("text", { x: W - pr, y: Y(majority) - 4, textAnchor: "end", fontSize: "10", fontWeight: "700", fill: T.text2 }, majority, " to win")),
-    hasR && /* @__PURE__ */ React.createElement("polygon", { points: band("rlo", "rhi"), fill: T.rep, opacity: "0.16" }),
-    /* @__PURE__ */ React.createElement("polygon", { points: band("lo", "hi"), fill: T.dem, opacity: "0.16" }),
+    hasR && /* @__PURE__ */ React.createElement(React.Fragment, null, /* @__PURE__ */ React.createElement("polygon", { points: band("rlo", "rhi"), fill: T.rep, opacity: "0.2" }), /* @__PURE__ */ React.createElement("polyline", { points: pts.map((x) => `${X(x.t)},${Y(x[k].rhi)}`).join(" "), fill: "none", stroke: T.rep, strokeWidth: ".9", opacity: ".45" }), /* @__PURE__ */ React.createElement("polyline", { points: pts.map((x) => `${X(x.t)},${Y(x[k].rlo)}`).join(" "), fill: "none", stroke: T.rep, strokeWidth: ".9", opacity: ".45" })),
+    /* @__PURE__ */ React.createElement("polygon", { points: band("lo", "hi"), fill: T.dem, opacity: "0.2" }),
+    /* @__PURE__ */ React.createElement("polyline", { points: pts.map((x) => `${X(x.t)},${Y(x[k].hi)}`).join(" "), fill: "none", stroke: T.dem, strokeWidth: ".9", opacity: ".45" }),
+    /* @__PURE__ */ React.createElement("polyline", { points: pts.map((x) => `${X(x.t)},${Y(x[k].lo)}`).join(" "), fill: "none", stroke: T.dem, strokeWidth: ".9", opacity: ".45" }),
     hasR && /* @__PURE__ */ React.createElement("polyline", { points: line("rmed"), fill: "none", stroke: T.rep, strokeWidth: "2.2" }),
     /* @__PURE__ */ React.createElement("polyline", { points: line("med"), fill: "none", stroke: T.dem, strokeWidth: "2.2" }),
     majOff && /* @__PURE__ */ React.createElement("text", { x: W - pr, y: majOff === "above" ? pt + 9 : H - pb - 3, textAnchor: "end", fontSize: "10", fontWeight: "700", fill: T.text3 }, majority, " to win ", majOff === "above" ? "\u2191" : "\u2193"),
