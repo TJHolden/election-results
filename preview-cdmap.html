@@ -5,12 +5,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Election Night Live Results</title>
-<meta name="build" content="20261031202642">
+<meta name="build" content="20261031203003">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261031202642"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261031203003"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -1411,15 +1411,15 @@ function UsHouseDistrictMap({ races, usFeats, onPickState, fallback }) {
     return races.forEach((r) => {
       if (r.type !== "House") return;
       const d = cdOf(r);
-      d != null && (m[r.abbr + "|" + String(+d)] = r);
+      d != null && (m[r.abbr + "|" + d] = r);
     }), m;
   }, [races]), kept = useMemo(() => fc ? fc.features.map((f) => {
     const gid = String(f.properties.gid || "");
     if (/ZZ$/i.test(gid)) return null;
     const ab = FIPS_ABBR[String(f.properties.s || "").padStart(2, "0")];
     if (!ab || !TILES[ab]) return null;
-    const dd = String(f.properties.d || "");
-    return /^\d+$/.test(dd) ? { f, abbr: ab, dist: String(+dd), race: byKey[ab + "|" + String(+dd)] || null } : null;
+    const dd = String(f.properties.d || "").trim(), dist = /^\d+$/.test(dd) ? String(+dd) : /at[- ]large/i.test(dd) || /00$/.test(gid) ? "AL" : null;
+    return dist === null ? null : { f, abbr: ab, dist, race: byKey[ab + "|" + dist] || null };
   }).filter(Boolean) : [], [fc, byKey]), path = useMemo(() => {
     if (!kept.length) return null;
     const fit = usFeats && usFeats.length ? { type: "FeatureCollection", features: usFeats } : { type: "FeatureCollection", features: kept.map((x) => x.f) };
