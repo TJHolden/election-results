@@ -5,12 +5,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Election Night Live Results</title>
-<meta name="build" content="20261031203003">
+<meta name="build" content="20261031203243">
 <script>
 /* Soft refresh: when a newer version of this page is published, swap it in quietly at a calm moment
    (tab in the background, or no mouse, scroll or typing for 45 seconds), keeping the view (it lives in the address bar) and the scroll position. */
 (function(){
-  var B="20261031203003"; if(!/\.github\.io$/.test(location.hostname)) return;
+  var B="20261031203243"; if(!/\.github\.io$/.test(location.hostname)) return;
   var KEY="en-soft", last=Date.now(), target=null, ss; try{ ss=window.sessionStorage; }catch(e){ ss=null; }
   function get(k){ try{ return ss&&JSON.parse(ss.getItem(k)||"null"); }catch(e){ return null; } }
   function put(k,v){ try{ ss&&ss.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -1417,7 +1417,7 @@ function UsHouseDistrictMap({ races, usFeats, onPickState, fallback }) {
     const gid = String(f.properties.gid || "");
     if (/ZZ$/i.test(gid)) return null;
     const ab = FIPS_ABBR[String(f.properties.s || "").padStart(2, "0")];
-    if (!ab || !TILES[ab]) return null;
+    if (!ab || ab === "DC" || !TILES[ab]) return null;
     const dd = String(f.properties.d || "").trim(), dist = /^\d+$/.test(dd) ? String(+dd) : /at[- ]large/i.test(dd) || /00$/.test(gid) ? "AL" : null;
     return dist === null ? null : { f, abbr: ab, dist, race: byKey[ab + "|" + dist] || null };
   }).filter(Boolean) : [], [fc, byKey]), path = useMemo(() => {
@@ -1429,7 +1429,15 @@ function UsHouseDistrictMap({ races, usFeats, onPickState, fallback }) {
     return d ? { ...x, d } : null;
   }).filter(Boolean) : [], [kept, path]), outlines = useMemo(() => !path || !usFeats ? [] : usFeats.map((f) => path(f)).filter(Boolean), [path, usFeats]);
   return err ? fallback || null : fc ? /* @__PURE__ */ React.createElement("div", { style: { position: "relative" } }, /* @__PURE__ */ React.createElement("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", height: "auto", role: "img", "aria-label": "U.S. House results by congressional district" }, items.map((x, i) => {
-    const r = x.race, fill = r ? regionColor(r) : T.border2, isC = !!(sbaR && r && sbaR.has(r.id));
+    const r = x.race;
+    let fill = T.card;
+    if (r)
+      if (r.v1 + r.v2 === 0) fill = T.surface;
+      else {
+        const col = pc(leaderOf(r));
+        fill = isDecided(r) ? col : col + "66";
+      }
+    const isC = !!(sbaR && r && sbaR.has(r.id));
     return /* @__PURE__ */ React.createElement(
       "path",
       {
