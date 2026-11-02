@@ -1,0 +1,38 @@
+name: civicAPI watch
+
+# Election night only: every 10 minutes from 4pm to midnight Mountain on Tue Nov 3 2026.
+# Mountain is UTC-7 in November, so 16:00 MT = 23:00 UTC (Nov 3) and midnight MT = 07:00 UTC (Nov 4).
+# A failed run emails the repo owner and pushes through the GitHub mobile app.
+on:
+  schedule:
+    - cron: '*/10 23 3 11 *'      # 23:00–23:59 UTC Nov 3  = 16:00–16:59 MT
+    - cron: '*/10 0-7 4 11 *'     # 00:00–07:59 UTC Nov 4  = 17:00–00:59 MT
+  workflow_dispatch:               # so you can fire it by hand any time
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query civicAPI and time it
+        run: |
+          set -o pipefail
+          URL='https://civicapi.org/api/v2/race/search?province=UT&limit=5'
+          SLOW_MS=10000
+
+          # three tries, so one blip doesn't page Tyler
+          for i in 1 2 3; do
+            OUT=$(curl -s -o /tmp/body.json -w '%{http_code} %{time_total}' --max-time 25 "$URL" || echo "000 25.0")
+            CODE=$(echo "$OUT" | cut -d' ' -f1)
+            SECS=$(echo "$OUT" | cut -d' ' -f2)
+            MS=$(awk -v s="$SECS" 'BEGIN{printf "%d", s*1000}')
+            RACES=$(grep -o '"id"' /tmp/body.json 2>/dev/null | wc -l | tr -d ' ')
+            echo "attempt $i: http=$CODE time=${MS}ms races=$RACES"
+            if [ "$CODE" = "200" ] && [ "$RACES" -gt 0 ] && [ "$MS" -lt "$SLOW_MS" ]; then
+              echo "civicAPI healthy (${MS}ms)"; exit 0
+            fi
+            LAST="http=$CODE time=${MS}ms races=$RACES"
+            sleep 15
+          done
+
+          echo "::error::civicAPI unhealthy after 3 tries — $LAST (threshold ${SLOW_MS}ms)"
+          exit 1
