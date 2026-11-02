@@ -1,0 +1,4 @@
+# The preview-* pages are test builds. preview-rehearsal-*.html carry SIMULATED
+# election results and must never be crawled or indexed.
+User-agent: *
+Disallow: /preview-
