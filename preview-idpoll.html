@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>TEST — civicAPI ID-poll trial</title>
+<style>
+ body{margin:0;background:#f6f3ec;color:#14213d;font:14px/1.5 system-ui,sans-serif;padding:18px}
+ h1{font-size:17px;margin:0 0 2px} .sub{color:#6e7689;font-size:12px;margin-bottom:14px}
+ .warn{background:#8a1c1c;color:#fff;padding:7px 12px;border-radius:6px;font-weight:600;font-size:12px;margin-bottom:14px}
+ .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:16px}
+ .kpi{background:#fff;border:1px solid #e4ddcf;border-radius:8px;padding:10px 12px}
+ .kpi b{display:block;font:700 22px ui-monospace,monospace;line-height:1.1}
+ .kpi span{font-size:11px;color:#6e7689}
+ button{font:600 13px system-ui;padding:8px 16px;border:none;border-radius:6px;background:#c9a227;color:#14213d;cursor:pointer;margin-right:8px}
+ button.off{background:#cfc5b0}
+ table{width:100%;border-collapse:collapse;font-size:12px;background:#fff;border:1px solid #e4ddcf;border-radius:8px}
+ th,td{padding:5px 8px;text-align:left;border-bottom:1px solid #f0ece2} th{color:#6e7689;font-weight:600}
+ td.n{text-align:right;font-family:ui-monospace,monospace}
+ .lbl{font-size:12px;color:#6e7689;margin:14px 0 6px;font-weight:600}
+</style></head><body>
+<div class="warn">TEST PAGE — measures civicAPI only. Not a results page. Nothing here feeds the live links.</div>
+<h1>civicAPI ID-poll trial</h1>
+<div class="sub">Rolling poll of 608 federal + statewide races by race ID. Measures whether polling by ID holds up where state scans are failing. <code>?c=</code> sets concurrency (default 12).</div>
+<div>
+  <button id="go">Start</button><button id="stop" class="off">Stop</button>
+  <span class="sub" id="conc"></span>
+</div>
+<div class="grid" id="kpis"></div>
+<div class="lbl">Recent responses</div>
+<table><thead><tr><th>race id</th><th class="n">ms</th><th>result</th><th class="n">votes</th><th>changed</th></tr></thead><tbody id="log"></tbody></table>
+<script>
+var IDS=[87146, 87145, 87144, 87140, 87141, 87139, 87137, 87138, 87143, 87142, 87136, 87135, 87088, 87089, 87091, 87093, 87092, 87090, 87094, 87095, 87077, 87079, 87078, 87080, 87081, 87083, 87082, 87073, 87074, 87076, 87075, 87084, 87086, 87085, 87087, 87176, 87174, 87169, 87171, 87173, 87168, 87170, 87172, 87504, 87503, 87508, 87507, 87505, 87506, 87502, 142159, 87410, 142156, 142160, 142158, 142155, 142157, 87407, 87404, 87402, 87408, 87406, 87405, 87403, 87409, 87069, 151010, 87071, 87072, 87070, 87051, 87068, 87056, 87048, 87040, 87057, 87060, 87052, 87044, 87061, 87049, 87041, 87065, 87050, 87053, 87045, 87062, 87054, 87042, 87066, 87058, 87043, 87046, 87063, 87055, 87047, 87064, 87067, 87059, 140115, 87341, 87336, 87333, 87344, 87345, 87334, 87335, 87338, 87343, 87340, 87346, 87342, 87332, 87339, 87337, 87365, 158302, 87367, 158303, 87366, 87359, 87527, 87360, 87351, 87352, 87361, 87353, 87362, 87357, 87363, 87354, 87364, 87355, 87350, 87356, 87358, 87469, 87471, 87470, 87462, 87464, 87472, 87463, 87468, 87465, 87467, 87461, 87466, 87284, 87282, 87283, 87281, 87477, 87473, 87474, 87156, 87157, 87155, 87152, 87153, 87154, 87148, 87151, 87149, 87150, 87147, 87037, 87038, 87039, 87035, 87036, 86914, 86908, 86910, 86911, 86909, 86913, 86912, 86903, 86905, 86907, 86902, 86900, 86906, 86904, 86901, 87230, 87233, 87232, 144498, 87231, 144497, 87221, 87227, 87225, 87224, 87229, 87226, 87228, 87222, 87223, 87133, 87131, 87130, 87132, 87134, 87121, 87116, 87129, 87124, 87119, 87114, 87127, 87122, 87117, 87112, 87125, 87120, 87115, 87128, 87123, 87118, 87113, 87126, 155751, 87215, 87216, 87218, 87219, 87217, 184059, 183176, 183909, 183025, 183254, 184130, 183967, 183178, 183855, 183788, 183253, 183429, 183969, 183287, 184131, 183968, 183590, 184127, 183286, 183289, 184129, 184006, 183288, 184025, 184128, 184056, 184024, 183729, 183350, 184126, 184062, 183910, 183349, 184089, 183392, 183427, 184088, 184195, 183789, 183785, 183024, 184174, 183911, 183784, 183098, 183094, 183090, 183027, 183023, 183174, 183970, 183850, 183787, 183783, 183026, 183428, 183181, 183786, 184196, 87206, 87208, 87209, 87207, 87201, 87210, 87202, 87211, 87212, 87203, 87213, 87204, 87205, 87214, 158484, 87349, 158490, 158489, 87348, 158488, 87347, 87292, 87301, 87302, 87293, 87296, 87294, 87295, 87297, 87298, 87299, 87290, 87291, 87300, 158928, 158940, 159573, 158931, 158937, 158927, 158930, 158939, 87582, 158929, 158932, 158938, 87510, 87512, 87526, 87509, 87511, 87513, 87400, 87401, 87399, 87397, 87398, 87396, 87394, 87395, 87393, 87378, 87384, 87379, 87381, 87387, 87389, 87377, 87390, 87392, 87380, 87382, 87383, 87385, 87391, 87386, 87388, 87376, 87476, 87475, 87451, 87456, 87450, 87455, 87449, 87454, 87448, 87453, 87452, 44210, 87440, 55855, 162408, 55860, 162711, 55859, 87439, 55857, 56004, 87412, 87422, 87425, 56005, 87413, 87423, 87426, 56006, 87414, 87424, 87434, 56007, 87415, 87418, 87435, 56008, 87416, 87419, 87436, 56009, 87417, 87427, 87437, 56010, 56013, 87428, 87438, 56011, 56014, 87429, 87432, 56012, 87420, 87430, 87433, 87411, 87421, 87431, 86928, 86932, 158265, 86929, 86933, 86930, 86926, 86921, 86918, 86920, 86922, 86924, 86919, 86917, 86925, 86923, 87480, 87481, 87479, 87447, 87478, 87446, 87445, 86939, 86942, 86934, 86943, 86944, 86938, 86948, 86949, 86945, 86946, 86947, 143672, 87177, 87179, 87181, 87183, 87178, 87180, 87182, 132496, 132403, 132404, 132466, 87255, 87252, 87253, 87254, 87251, 87019, 87018, 87020, 160399, 87021, 87013, 87010, 87015, 87017, 87014, 87012, 87011, 87016, 87022, 157463, 157301, 157303, 157464, 87289, 157304, 157300, 157302, 87288, 87285, 87286, 87287, 87493, 87494, 87492, 87491, 87484, 87486, 87490, 87488, 87483, 87485, 87487, 87489, 87501, 87500, 87498, 87497, 87499, 87496, 87495, 87250, 87246, 87247, 87245, 87330, 87329, 87331, 158017, 158013, 158020, 158016, 158023, 158019, 158015, 158022, 158018, 158014, 158021, 87303, 87309, 87308, 87307, 87324, 87305, 87304, 87328, 87320, 87327, 87326, 87325, 87317, 87323, 87322, 87321, 87313, 87319, 87318, 87310, 87316, 87315, 87314, 87306, 87312, 87311, 87107, 87108, 87109, 87110, 87111, 152100, 87106, 87105, 87103, 87104, 163219, 87459, 87460, 87457, 87458, 87375, 87371, 87373, 87368, 87370, 87372, 87374, 87369, 87264, 156710, 87263, 87260, 87261, 87262, 87265, 156709, 87259, 87256, 87257, 87258, 151939, 87101, 87100, 151938, 151937, 87098, 87099];
+var C=Math.max(1,Math.min(48,+(new URLSearchParams(location.search).get("c")||12)));
+document.getElementById("conc").textContent="concurrency "+C;
+var S={req:0,ok:0,fail:0,lat:[],changed:0,laps:0,t0:0,running:false,last:{}};
+var qi=0, rows=[];
+function pct(a,p){ if(!a.length) return 0; var s=a.slice().sort(function(x,y){return x-y}); return s[Math.floor(p*(s.length-1))]; }
+function render(){
+  var el=Date.now()-S.t0, secs=el/1000;
+  var k=[["req",S.req,"requests sent"],
+    ["ok",S.ok+" / "+S.req,"succeeded"],
+    ["rate",(S.req?Math.round(100*S.ok/S.req):0)+"%","success rate"],
+    ["thru",(secs>0?(S.ok/secs).toFixed(2):"0")+"/s","throughput"],
+    ["p50",pct(S.lat,0.5)+"ms","median latency"],
+    ["p90",pct(S.lat,0.9)+"ms","90th pct latency"],
+    ["lap",(S.ok&&secs?Math.round(IDS.length/(S.ok/secs)):0)+"s","full lap (est)"],
+    ["chg",S.changed,"races whose votes changed"]];
+  document.getElementById("kpis").innerHTML=k.map(function(x){
+    return '<div class="kpi"><b>'+x[1]+'</b><span>'+x[2]+'</span></div>';}).join("");
+  document.getElementById("log").innerHTML=rows.slice(0,14).map(function(r){
+    return "<tr><td>"+r.id+"</td><td class=n>"+r.ms+"</td><td>"+r.res+"</td><td class=n>"+(r.v==null?"—":r.v)+"</td><td>"+(r.ch?"yes":"")+"</td></tr>";}).join("");
+}
+async function worker(){
+  while(S.running){
+    var id=IDS[qi%IDS.length]; qi++; if(qi%IDS.length===0) S.laps++;
+    var t=Date.now(), rec={id:id,ms:0,res:"",v:null,ch:false};
+    S.req++;
+    try{
+      var r=await fetch("https://civicapi.org/api/v2/race/"+id);
+      var d=await r.json();
+      rec.ms=Date.now()-t;
+      if(r.ok){ S.ok++; S.lat.push(rec.ms); if(S.lat.length>500) S.lat.shift();
+        var v=(d.candidates||[]).reduce(function(n,c){return n+((c&&c.votes)||0)},0);
+        rec.v=v; rec.res="ok";
+        if(S.last[id]!=null&&S.last[id]!==v){ S.changed++; rec.ch=true; }
+        S.last[id]=v;
+      } else { S.fail++; rec.res="HTTP "+r.status; }
+    }catch(e){ S.fail++; rec.ms=Date.now()-t; rec.res="failed"; }
+    rows.unshift(rec); if(rows.length>40) rows.pop();
+  }
+}
+document.getElementById("go").onclick=function(){
+  if(S.running) return; S.running=true; S.t0=Date.now();
+  for(var i=0;i<C;i++) worker();
+};
+document.getElementById("stop").onclick=function(){ S.running=false; };
+setInterval(render,1000); render();
+</script></body></html>
